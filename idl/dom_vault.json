@@ -1,0 +1,4366 @@
+{
+  "address": "2KRqqGA47Pg2ML7Q8WJyaVAmEL8DaRx1sKxqzpVyNnkg",
+  "metadata": {
+    "name": "dom_vault",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Cofre tokenizado DOM — programa Anchor e transfer hook",
+    "repository": "https://github.com/cfsumbach/dom-vault"
+  },
+  "docs": [
+    "Cofre DOM. O transfer hook mora aqui dentro, não em programa separado (D1):",
+    "ele precisa ler estado do cofre — whitelist, `cap_enforced`, isenção das",
+    "contas do programa — a cada transferência."
+  ],
+  "instructions": [
+    {
+      "name": "ajustar_parametro",
+      "docs": [
+        "Ajusta o depósito mínimo em vigor. **Privilegiada** — 12ª caneta.",
+        "**Ajusta um parametro de politica. Privilegiada.** Upgrade E (D-F2-21).",
+        "",
+        "O valor sai do binario e passa a viver no estado: mudanca de valor deixa",
+        "de exigir upgrade. Os LIMITES de cada parametro seguem constantes, e e' de",
+        "proposito — se fossem votaveis, a protecao seria removivel pelo mesmo voto",
+        "que ela protege."
+      ],
+      "discriminator": [
+        2,
+        66,
+        216,
+        199,
+        201,
+        37,
+        156,
+        230
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "qual",
+          "type": {
+            "defined": {
+              "name": "Parametro"
+            }
+          }
+        },
+        {
+          "name": "novo",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "carimbar_nav",
+      "docs": [
+        "**Carimba o NAV corrente na catraca de um pedido. Permissionless.**",
+        "",
+        "Só desce. Quem chama não escolhe o número — ele vem do `vault.nav` do",
+        "instante —, então deixar aberto não dá poder a ninguém. O backend chama a",
+        "cada publicação; o investidor chama o próprio pedido se desconfiar."
+      ],
+      "discriminator": [
+        230,
+        66,
+        238,
+        37,
+        52,
+        18,
+        46,
+        113
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pedido",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  103,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pedido.id",
+                "account": "PedidoResgate"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "deploy_capital",
+      "docs": [
+        "Move USDC da treasury para um destino operacional allowlisted.",
+        "**Privilegiada.** Três travas: autoridade, allowlist, e reserva + fila."
+      ],
+      "discriminator": [
+        233,
+        143,
+        38,
+        229,
+        114,
+        162,
+        34,
+        22
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "dom_mint",
+          "docs": [
+            "Só para ler o `supply` — a reserva é percentual do patrimônio."
+          ],
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "treasury",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "destino_usdc",
+          "docs": [
+            "Conta de USDC do destino. O **owner** dela é que precisa estar na",
+            "allowlist — nunca a conta em si (D-F2-02)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "usdc_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "valor",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "deposit",
+      "docs": [
+        "Aporte em USDC contra emissão de cotas ao NAV corrente.",
+        "",
+        "Não mexe no NAV: cota nova sai pelo preço corrente, então quem já estava",
+        "dentro não é diluído pelo novato (T02)."
+      ],
+      "discriminator": [
+        242,
+        35,
+        198,
+        137,
+        82,
+        225,
+        242,
+        182
+      ],
+      "accounts": [
+        {
+          "name": "depositor",
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "depositor_whitelist"
+        },
+        {
+          "name": "dom_mint",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "depositor_usdc",
+          "writable": true
+        },
+        {
+          "name": "treasury",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "depositor_dom",
+          "writable": true
+        },
+        {
+          "name": "dom_token_program",
+          "docs": [
+            "O DOM é Token-2022 e ponto: é onde o hook existe."
+          ],
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "usdc_token_program",
+          "docs": [
+            "O USDC pode estar sob qualquer um dos dois programas de token — em",
+            "devnet costuma ser o clássico."
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "usdc_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "deposit_especial",
+      "docs": [
+        "**Deposit especial** — o lucro realizado do ciclo entra no cofre e se",
+        "reparte 60/40 na mesma transação. **Privilegiada.**",
+        "",
+        "Sucede o `accrue_performance` (D-F2-09). A base da taxa deixou de ser",
+        "\"o que passou do high water mark\" e passou a ser `P`, o valor",
+        "transferido aqui: taxa só sobre lucro que virou caixa, nunca sobre",
+        "marcação. Abre a janela de saque de lucro."
+      ],
+      "discriminator": [
+        172,
+        27,
+        52,
+        74,
+        152,
+        192,
+        132,
+        136
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "dom_mint",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "origem_usdc",
+          "docs": [
+            "Conta de USDC de onde sai o `P`. Pertence à **autoridade** — o Vault PDA",
+            "do Squads —, então quem assina a saída é o mesmo quórum que assina a",
+            "distribuição."
+          ],
+          "writable": true
+        },
+        {
+          "name": "treasury",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "socio0_dom",
+          "writable": true
+        },
+        {
+          "name": "socio1_dom",
+          "writable": true
+        },
+        {
+          "name": "socio2_dom",
+          "writable": true
+        },
+        {
+          "name": "socio0_ledger",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  45,
+                  115,
+                  104,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.socios [0]",
+                "account": "Vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "socio1_ledger",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  45,
+                  115,
+                  104,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.socios [1]",
+                "account": "Vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "socio2_ledger",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  45,
+                  115,
+                  104,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.socios [2]",
+                "account": "Vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dom_token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "usdc_token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "lucro_realizado",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "deposit_para",
+      "docs": [
+        "**Aporte EM NOME DE OUTRA CARTEIRA** — o bônus da mesa numa assinatura.",
+        "Upgrade G (`D-F2-30`). As DUAS pontas passam pela whitelist: `mint_to`",
+        "nao dispara o hook, entao sem a conferencia do beneficiario isto seria",
+        "porta para cunhar cota em qualquer carteira. Ver `deposit_para.rs`."
+      ],
+      "discriminator": [
+        101,
+        231,
+        89,
+        130,
+        182,
+        189,
+        82,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "aportador",
+          "docs": [
+            "Quem PAGA o USDC. Assina, e não recebe cota nenhuma."
+          ],
+          "signer": true
+        },
+        {
+          "name": "aportador_whitelist"
+        },
+        {
+          "name": "beneficiario",
+          "docs": [
+            "Quem RECEBE a cota. Só o endereço — não assina."
+          ]
+        },
+        {
+          "name": "beneficiario_whitelist"
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "dom_mint",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "aportador_usdc",
+          "writable": true
+        },
+        {
+          "name": "treasury",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "beneficiario_dom",
+          "writable": true
+        },
+        {
+          "name": "dom_token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "usdc_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "usdc_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "efetivar_resgate_capital",
+      "docs": [
+        "**Efetiva um resgate de capital: queima a cota e paga. Privilegiada.**",
+        "",
+        "Paga do `endereco_resgate`, que a mesa abastece de fora do cofre — o",
+        "treasury não é tocado. O `pior_nav` é informado pela mesa e limitado por",
+        "cima três vezes; o contrato não tem histórico para provar que é o mínimo",
+        "do período, e quem prova é quem lê o log de `NavPublished`."
+      ],
+      "discriminator": [
+        94,
+        95,
+        176,
+        126,
+        65,
+        45,
+        29,
+        247
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pedido",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  103,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pedido.id",
+                "account": "PedidoResgate"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dom_mint",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "escrow_dom",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "escrow_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "endereco_resgate",
+          "docs": [
+            "A conta de onde o resgate é pago. Fixada em estado, e a autoridade dela",
+            "tem de ser a `authority` — o mesmo quórum que aprovou a proposta."
+          ],
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "cotista_usdc",
+          "docs": [
+            "Só o dono do pedido recebe."
+          ],
+          "writable": true
+        },
+        {
+          "name": "dom_token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "usdc_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "pior_nav",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "enable_cap",
+      "discriminator": [
+        148,
+        105,
+        189,
+        20,
+        67,
+        164,
+        191,
+        26
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "execute",
+      "docs": [
+        "`Execute` da transfer-hook-interface.",
+        "",
+        "O discriminador **não** é o do Anchor: é o da interface SPL, os 8",
+        "primeiros bytes do hash de `\"spl-transfer-hook-interface:execute\"`. É o",
+        "que o Token-2022 manda. Em Anchor 1.x o atributo `#[interface]` foi",
+        "removido; o substituto é o discriminador customizado (A1 de",
+        "`ANCHOR-1X-NOTAS.md`)."
+      ],
+      "discriminator": [
+        105,
+        37,
+        101,
+        197,
+        75,
+        251,
+        102,
+        26
+      ],
+      "accounts": [
+        {
+          "name": "source"
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "destination"
+        },
+        {
+          "name": "owner",
+          "docs": [
+            "antes de chamar o hook; aqui a conta é só contexto."
+          ]
+        },
+        {
+          "name": "extra_account_meta_list",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  120,
+                  116,
+                  114,
+                  97,
+                  45,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "source_whitelist",
+          "docs": [
+            "devolveria `AccountNotInitialized` genérico quando a conta não existe, e",
+            "o caso \"conta ausente\" é justamente o que precisa de erro próprio (T22)."
+          ]
+        },
+        {
+          "name": "destination_whitelist"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize",
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "Vault PDA do Squads v4 em produção (D2). Em teste, uma chave qualquer —",
+            "a instrução não distingue, e não deve: quem assina é a autoridade."
+          ],
+          "signer": true
+        },
+        {
+          "name": "dom_mint"
+        },
+        {
+          "name": "usdc_mint",
+          "docs": [
+            "USDC aceito em `deposit`. Fica gravado no cofre: allowlist de um item,",
+            "como o mint do DOM."
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury",
+          "docs": [
+            "Caixa do fundo. Nasce junto do cofre para que não exista janela entre",
+            "\"cofre inicializado\" e \"cofre com lugar para receber USDC\"."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  101,
+                  97,
+                  115,
+                  117,
+                  114,
+                  121
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "escrow_authority",
+          "docs": [
+            "dado — só assina."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "escrow_dom",
+          "docs": [
+            "Cotas em escrow entre pedido e processamento (D8)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  115,
+                  99,
+                  114,
+                  111,
+                  119,
+                  45,
+                  100,
+                  111,
+                  109
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "dom_token_program"
+        },
+        {
+          "name": "usdc_token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "nav_oracle",
+          "type": "pubkey"
+        },
+        {
+          "name": "socios",
+          "type": {
+            "array": [
+              "pubkey",
+              3
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "initialize_extra_account_meta_list",
+      "discriminator": [
+        92,
+        197,
+        174,
+        197,
+        41,
+        124,
+        19,
+        3
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "extra_account_meta_list",
+          "docs": [
+            "de novo, contra `get_extra_account_metas_address` no handler. Criado",
+            "aqui, então não dá para tipar como `Account`."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  120,
+                  116,
+                  114,
+                  97,
+                  45,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "marcar_vencido",
+      "docs": [
+        "**Marca um pedido vencido e trava o `deploy_capital`. Permissionless.**",
+        "",
+        "O prazo é obrigação firme. O contrato não obriga a mesa a desmontar",
+        "posição, mas impede o cofre de mandar mais capital para campo enquanto",
+        "dever a quem pediu para sair."
+      ],
+      "discriminator": [
+        204,
+        97,
+        76,
+        138,
+        78,
+        48,
+        146,
+        192
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pedido",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  103,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "pedido.id",
+                "account": "PedidoResgate"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "pause",
+      "discriminator": [
+        211,
+        22,
+        221,
+        251,
+        74,
+        121,
+        193,
+        47
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "publish_nav",
+      "docs": [
+        "Publica NAV com hash de atestacao. Só o oráculo, e o relógio não anda",
+        "para trás (T35/T36/T37)."
+      ],
+      "discriminator": [
+        45,
+        146,
+        87,
+        144,
+        84,
+        228,
+        177,
+        59
+      ],
+      "accounts": [
+        {
+          "name": "publisher",
+          "docs": [
+            "O oráculo **ou** a autoridade. Qual dos dois é conferido no handler,",
+            "porque a diferença não é de acesso — é de quanto pode variar."
+          ],
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "nav",
+          "type": "u64"
+        },
+        {
+          "name": "attestation_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": "i64"
+        }
+      ]
+    },
+    {
+      "name": "redeem_fee_share",
+      "docs": [
+        "Resgate de `fee_share`: instantâneo, contra caixa livre **acima da",
+        "reserva**, sem passar pela fila D+30."
+      ],
+      "discriminator": [
+        47,
+        251,
+        240,
+        54,
+        59,
+        50,
+        57,
+        220
+      ],
+      "accounts": [
+        {
+          "name": "socio",
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "ledger",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  101,
+                  101,
+                  45,
+                  115,
+                  104,
+                  97,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "socio"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dom_mint",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "socio_dom",
+          "writable": true
+        },
+        {
+          "name": "treasury",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "socio_usdc",
+          "writable": true
+        },
+        {
+          "name": "dom_token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "usdc_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "shares",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "return_capital",
+      "docs": [
+        "Devolve USDC para a treasury. **Não é privilegiada**: a allowlist",
+        "controla por onde o dinheiro sai, entrar é irrestrito."
+      ],
+      "discriminator": [
+        237,
+        35,
+        135,
+        195,
+        132,
+        169,
+        228,
+        66
+      ],
+      "accounts": [
+        {
+          "name": "origem_authority",
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "origem_usdc",
+          "writable": true
+        },
+        {
+          "name": "treasury",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "usdc_token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "valor",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "sacar_lucro",
+      "docs": [
+        "Saque do lucro da janela, pelo cotista. **Não é privilegiada** — quem",
+        "assina é o dono das cotas, como no `redeem_fee_share`.",
+        "",
+        "Queima `valor / nav` cotas e paga `cotas × delta` em USDC: o cotista",
+        "leva o lucro e volta à posição em valor que tinha antes da distribuição."
+      ],
+      "discriminator": [
+        218,
+        62,
+        237,
+        112,
+        20,
+        247,
+        143,
+        235
+      ],
+      "accounts": [
+        {
+          "name": "cotista",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "marca",
+          "docs": [
+            "Marca de \"já sacou esta distribuição\". Criada no primeiro saque desta",
+            "carteira — quem nunca saca não paga rent nenhum."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  117,
+                  99,
+                  114,
+                  111
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cotista"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dom_mint",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "cotista_dom",
+          "writable": true
+        },
+        {
+          "name": "treasury",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "cotista_usdc",
+          "writable": true
+        },
+        {
+          "name": "dom_token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "usdc_token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "set_nav_oracle",
+      "docs": [
+        "**Rotaciona a chave do oráculo de NAV. Privilegiada.**",
+        "",
+        "A revogação que não existia: sem ela, chave vazada só se resolvia com",
+        "upgrade de emergência, e a mesa perdia a corrida de publicação."
+      ],
+      "discriminator": [
+        157,
+        240,
+        255,
+        13,
+        74,
+        74,
+        123,
+        117
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "novo",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "solicitar_resgate_capital",
+      "docs": [
+        "**Solicitar resgate de capital.** Trava a fração de cotas no escrow e abre",
+        "o pedido, com prazo de 180 dias como teto.",
+        "",
+        "Irrevogável — **não existe** instrução de cancelamento, e é assim de",
+        "propósito. Parcial é permitido: cada pedido tem sua data e seu pior-NAV.",
+        "",
+        "Sucede o `request_redeem` da fila D+30, que saiu: um produto, não dois."
+      ],
+      "discriminator": [
+        251,
+        30,
+        141,
+        14,
+        194,
+        166,
+        5,
+        78
+      ],
+      "accounts": [
+        {
+          "name": "cotista",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "cotista_whitelist",
+          "docs": [
+            "Fail-closed do hook: quem não está na whitelist não pede.",
+            "",
+            "`UncheckedAccount` como no `deposit`: quem confere é o",
+            "`require_whitelisted`, que deriva a PDA, confere o dono e desserializa.",
+            "Declarar como `Account<WhitelistEntry>` faria a conta AUSENTE virar erro",
+            "de conta, não `NotWhitelisted` — e a função é uma só de propósito."
+          ]
+        },
+        {
+          "name": "pedido",
+          "docs": [
+            "A conta do pedido. Semeada pelo contador global do cofre."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  115,
+                  103,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "vault.proximo_pedido_id",
+                "account": "Vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dom_mint",
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "cotista_dom",
+          "writable": true
+        },
+        {
+          "name": "escrow_dom",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "dom_token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "instructions_sysvar",
+          "docs": [
+            "a instrução anterior e provar que a transferência para o escrow é desta",
+            "transação."
+          ],
+          "address": "Sysvar1nstructions1111111111111111111111111"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "cotas",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "unpause",
+      "discriminator": [
+        169,
+        144,
+        4,
+        38,
+        10,
+        141,
+        188,
+        255
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_deploy_allowlist",
+      "docs": [
+        "Registra ou limpa um destino operacional da allowlist do",
+        "`deploy_capital`. **Privilegiada** — decide para onde o capital dos",
+        "cotistas pode sair (D-F2-01/D-F2-02)."
+      ],
+      "discriminator": [
+        178,
+        55,
+        13,
+        40,
+        126,
+        203,
+        166,
+        222
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "indice",
+          "type": "u8"
+        },
+        {
+          "name": "destino",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "update_endereco_resgate",
+      "docs": [
+        "**Nomeia a conta de onde os resgates de capital são pagos. Privilegiada.**"
+      ],
+      "discriminator": [
+        90,
+        240,
+        97,
+        85,
+        191,
+        9,
+        41,
+        245
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint",
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "novo_endereco",
+          "docs": [
+            "A conta que vai pagar os resgates. **Autoridade tem de ser a `authority`**",
+            "— o Vault do Squads —, igual à `origem_usdc` do `deposit_especial`.",
+            "",
+            "Fixar em estado, em vez de aceitar qualquer conta do Squads na hora de",
+            "pagar, é o que permite ao dashboard mostrar \"o fundo de resgate tem X\"",
+            "com significado, e o que impede a mesa pagar da conta errada por engano."
+          ]
+        },
+        {
+          "name": "usdc_token_program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_min_deposit",
+      "discriminator": [
+        161,
+        35,
+        64,
+        61,
+        183,
+        214,
+        78,
+        42
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "novo",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "update_socios",
+      "docs": [
+        "Sócios são configuráveis — e a trava de distinção vale aqui igual ao",
+        "`initialize`, senão a do `initialize` é contornável em dois passos (D10)."
+      ],
+      "discriminator": [
+        91,
+        229,
+        190,
+        183,
+        158,
+        189,
+        226,
+        11
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "socios",
+          "type": {
+            "array": [
+              "pubkey",
+              3
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_whitelist",
+      "docs": [
+        "O terceiro argumento entrou no Upgrade G (`D-F2-30`): piso de aporte",
+        "so' desta carteira, `0` = usa o do cofre."
+      ],
+      "discriminator": [
+        94,
+        198,
+        33,
+        20,
+        192,
+        97,
+        44,
+        59
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  119,
+                  104,
+                  105,
+                  116,
+                  101,
+                  108,
+                  105,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "owner",
+          "type": "pubkey"
+        },
+        {
+          "name": "active",
+          "type": "bool"
+        },
+        {
+          "name": "min_deposit_proprio",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "FeeShareLedger",
+      "discriminator": [
+        143,
+        106,
+        200,
+        151,
+        246,
+        44,
+        244,
+        76
+      ]
+    },
+    {
+      "name": "LucroSacado",
+      "discriminator": [
+        244,
+        238,
+        94,
+        42,
+        7,
+        130,
+        174,
+        27
+      ]
+    },
+    {
+      "name": "PedidoResgate",
+      "discriminator": [
+        53,
+        102,
+        8,
+        246,
+        112,
+        125,
+        58,
+        86
+      ]
+    },
+    {
+      "name": "Vault",
+      "discriminator": [
+        211,
+        8,
+        232,
+        43,
+        2,
+        152,
+        117,
+        119
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "CapEnforcementEnabled",
+      "discriminator": [
+        50,
+        177,
+        120,
+        152,
+        51,
+        107,
+        25,
+        246
+      ]
+    },
+    {
+      "name": "CapitalDeployed",
+      "discriminator": [
+        167,
+        153,
+        57,
+        148,
+        27,
+        239,
+        162,
+        35
+      ]
+    },
+    {
+      "name": "CapitalReturned",
+      "discriminator": [
+        102,
+        29,
+        91,
+        89,
+        61,
+        170,
+        63,
+        22
+      ]
+    },
+    {
+      "name": "CycleRolled",
+      "discriminator": [
+        130,
+        169,
+        20,
+        64,
+        28,
+        55,
+        21,
+        47
+      ]
+    },
+    {
+      "name": "DeployAllowlistUpdated",
+      "discriminator": [
+        50,
+        123,
+        117,
+        178,
+        237,
+        79,
+        92,
+        36
+      ]
+    },
+    {
+      "name": "Deposited",
+      "discriminator": [
+        111,
+        141,
+        26,
+        45,
+        161,
+        35,
+        100,
+        57
+      ]
+    },
+    {
+      "name": "EnderecoDeResgateAtualizado",
+      "discriminator": [
+        145,
+        83,
+        170,
+        75,
+        171,
+        208,
+        10,
+        200
+      ]
+    },
+    {
+      "name": "FeeShareRedeemed",
+      "discriminator": [
+        47,
+        154,
+        134,
+        190,
+        157,
+        4,
+        83,
+        170
+      ]
+    },
+    {
+      "name": "JanelaDeLucroEncerrada",
+      "discriminator": [
+        116,
+        236,
+        84,
+        251,
+        29,
+        60,
+        72,
+        80
+      ]
+    },
+    {
+      "name": "LucroDistribuido",
+      "discriminator": [
+        171,
+        238,
+        58,
+        73,
+        86,
+        235,
+        133,
+        153
+      ]
+    },
+    {
+      "name": "LucroSacadoPorCotista",
+      "discriminator": [
+        56,
+        125,
+        107,
+        9,
+        20,
+        159,
+        111,
+        22
+      ]
+    },
+    {
+      "name": "MinDepositUpdated",
+      "discriminator": [
+        25,
+        23,
+        150,
+        164,
+        135,
+        162,
+        172,
+        163
+      ]
+    },
+    {
+      "name": "NavOracleTrocado",
+      "discriminator": [
+        248,
+        144,
+        12,
+        244,
+        168,
+        113,
+        78,
+        158
+      ]
+    },
+    {
+      "name": "NavPublished",
+      "discriminator": [
+        32,
+        6,
+        85,
+        61,
+        90,
+        251,
+        51,
+        56
+      ]
+    },
+    {
+      "name": "ParametroAjustado",
+      "discriminator": [
+        111,
+        152,
+        236,
+        95,
+        43,
+        72,
+        30,
+        214
+      ]
+    },
+    {
+      "name": "PauseToggled",
+      "discriminator": [
+        105,
+        215,
+        89,
+        53,
+        198,
+        232,
+        136,
+        161
+      ]
+    },
+    {
+      "name": "ResgateEfetivado",
+      "discriminator": [
+        87,
+        48,
+        164,
+        33,
+        43,
+        200,
+        223,
+        19
+      ]
+    },
+    {
+      "name": "ResgateEmAtraso",
+      "discriminator": [
+        63,
+        44,
+        80,
+        161,
+        55,
+        253,
+        63,
+        47
+      ]
+    },
+    {
+      "name": "ResgateSolicitado",
+      "discriminator": [
+        21,
+        197,
+        24,
+        1,
+        21,
+        182,
+        25,
+        170
+      ]
+    },
+    {
+      "name": "SociosUpdated",
+      "discriminator": [
+        148,
+        139,
+        165,
+        192,
+        91,
+        227,
+        208,
+        30
+      ]
+    },
+    {
+      "name": "VaultInitialized",
+      "discriminator": [
+        180,
+        43,
+        207,
+        2,
+        18,
+        71,
+        3,
+        75
+      ]
+    },
+    {
+      "name": "WhitelistUpdated",
+      "discriminator": [
+        205,
+        110,
+        205,
+        193,
+        238,
+        237,
+        220,
+        22
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "UnknownMint",
+      "msg": "Mint nao e o mint do DOM"
+    },
+    {
+      "code": 6001,
+      "name": "TokenAccountMintMismatch",
+      "msg": "Conta de token nao pertence ao mint do DOM"
+    },
+    {
+      "code": 6002,
+      "name": "NotTransferring",
+      "msg": "Hook invocado fora de uma transferencia real"
+    },
+    {
+      "code": 6003,
+      "name": "NotWhitelisted",
+      "msg": "Carteira sem whitelist ativa"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidWhitelistAddress",
+      "msg": "Endereco de whitelist nao confere com o PDA da carteira"
+    },
+    {
+      "code": 6005,
+      "name": "CapExceeded",
+      "msg": "Operacao deixaria o destino acima de 25% do supply"
+    },
+    {
+      "code": 6006,
+      "name": "CapAlreadyEnforced",
+      "msg": "cap_enforced ja esta ativo — ativacao e one-way"
+    },
+    {
+      "code": 6007,
+      "name": "Unauthorized",
+      "msg": "Apenas a autoridade do cofre pode executar"
+    },
+    {
+      "code": 6008,
+      "name": "MintNotToken2022",
+      "msg": "Mint nao esta sob o Token-2022"
+    },
+    {
+      "code": 6009,
+      "name": "TransferHookNotConfigured",
+      "msg": "Mint nao aponta o transfer hook para este programa"
+    },
+    {
+      "code": 6010,
+      "name": "TransferHookAuthorityMismatch",
+      "msg": "transfer_hook authority do mint nao e a autoridade do cofre"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidExtraAccountMetaListAddress",
+      "msg": "Conta de validacao da interface em endereco divergente"
+    },
+    {
+      "code": 6012,
+      "name": "MintAuthorityMismatch",
+      "msg": "mint authority do DOM nao e o PDA do cofre"
+    },
+    {
+      "code": 6013,
+      "name": "FreezeAuthorityMismatch",
+      "msg": "freeze authority do DOM nao e o PDA do cofre"
+    },
+    {
+      "code": 6014,
+      "name": "UnknownUsdcMint",
+      "msg": "Mint de USDC nao e o aceito pelo cofre"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidTreasury",
+      "msg": "Conta de caixa nao e a do cofre"
+    },
+    {
+      "code": 6016,
+      "name": "DepositBelowMinimum",
+      "msg": "Deposito abaixo do minimo vigente do cofre"
+    },
+    {
+      "code": 6017,
+      "name": "ZeroShares",
+      "msg": "Aporte nao compra nem uma unidade de cota"
+    },
+    {
+      "code": 6018,
+      "name": "InvalidNav",
+      "msg": "NAV invalido"
+    },
+    {
+      "code": 6019,
+      "name": "MathOverflow",
+      "msg": "Overflow aritmetico"
+    },
+    {
+      "code": 6020,
+      "name": "NotOracle",
+      "msg": "Apenas o oraculo de NAV pode publicar"
+    },
+    {
+      "code": 6021,
+      "name": "NavTimestampRegressive",
+      "msg": "Timestamp de NAV regressivo"
+    },
+    {
+      "code": 6022,
+      "name": "NavTimestampInFuture",
+      "msg": "Timestamp de NAV no futuro"
+    },
+    {
+      "code": 6023,
+      "name": "QueueFull",
+      "msg": "Fila de resgates cheia"
+    },
+    {
+      "code": 6024,
+      "name": "ZeroSharesRequested",
+      "msg": "Pedido de resgate sem cotas"
+    },
+    {
+      "code": 6025,
+      "name": "EscrowTransferMissing",
+      "msg": "A transferencia de cotas para o escrow nao precede este pedido"
+    },
+    {
+      "code": 6026,
+      "name": "EscrowShortfall",
+      "msg": "Saldo do escrow nao cobre as cotas pendentes"
+    },
+    {
+      "code": 6027,
+      "name": "InvalidEscrowAccount",
+      "msg": "Conta de escrow de cotas divergente"
+    },
+    {
+      "code": 6028,
+      "name": "BeneficiaryMismatch",
+      "msg": "Conta de USDC do beneficiario nao confere com o pedido"
+    },
+    {
+      "code": 6029,
+      "name": "InvalidQueue",
+      "msg": "Conta de fila divergente"
+    },
+    {
+      "code": 6030,
+      "name": "DuplicateSocio",
+      "msg": "Socios precisam ser tres carteiras distintas"
+    },
+    {
+      "code": 6031,
+      "name": "SocioMismatch",
+      "msg": "Carteira de socio divergente da configurada"
+    },
+    {
+      "code": 6032,
+      "name": "Paused",
+      "msg": "Cofre pausado"
+    },
+    {
+      "code": 6033,
+      "name": "NotPaused",
+      "msg": "Cofre nao esta pausado"
+    },
+    {
+      "code": 6034,
+      "name": "InsufficientFeeShare",
+      "msg": "Sem fee_share suficiente no livro do socio"
+    },
+    {
+      "code": 6035,
+      "name": "NoFreeCash",
+      "msg": "Caixa livre acima da reserva nao cobre o resgate de fee_share"
+    },
+    {
+      "code": 6036,
+      "name": "EmptySupply",
+      "msg": "Supply zerado"
+    },
+    {
+      "code": 6037,
+      "name": "NavStale",
+      "msg": "NAV velho demais para ser usado"
+    },
+    {
+      "code": 6038,
+      "name": "NavOutOfBounds",
+      "msg": "Variacao do NAV acima do limite por publicacao — exige proposta da mesa"
+    },
+    {
+      "code": 6039,
+      "name": "RedeemBelowMinimum",
+      "msg": "Pedido de resgate abaixo do minimo"
+    },
+    {
+      "code": 6040,
+      "name": "TooManyRequests",
+      "msg": "Carteira ja tem o maximo de pedidos na fila"
+    },
+    {
+      "code": 6041,
+      "name": "AccrueTooSoon",
+      "msg": "Apuracao antes do intervalo minimo"
+    },
+    {
+      "code": 6042,
+      "name": "NavNeverPublished",
+      "msg": "Cofre sem NAV publicado — o oraculo tem que publicar antes do primeiro aporte"
+    },
+    {
+      "code": 6043,
+      "name": "DestinationNotAllowed",
+      "msg": "Destino nao esta na allowlist de deploy"
+    },
+    {
+      "code": 6044,
+      "name": "ReserveViolation",
+      "msg": "Saida deixaria o caixa abaixo da reserva mais a fila"
+    },
+    {
+      "code": 6045,
+      "name": "AllowlistIndexOutOfRange",
+      "msg": "Indice fora da allowlist de deploy"
+    },
+    {
+      "code": 6046,
+      "name": "SocioNaoPodeSerDestino",
+      "msg": "Carteira de socio nao pode ser destino operacional"
+    },
+    {
+      "code": 6047,
+      "name": "ZeroDeploy",
+      "msg": "Movimento de capital de valor zero"
+    },
+    {
+      "code": 6048,
+      "name": "ZeroRedeemValue",
+      "msg": "Pedido de resgate vale zero USDC ao NAV corrente"
+    },
+    {
+      "code": 6049,
+      "name": "InvalidMinDeposit",
+      "msg": "Deposito minimo invalido"
+    },
+    {
+      "code": 6050,
+      "name": "VaultAlreadyMigrated",
+      "msg": "Cofre ja migrado — a conta ja tem o tamanho novo"
+    },
+    {
+      "code": 6051,
+      "name": "UnexpectedVaultSize",
+      "msg": "Conta do cofre com tamanho inesperado"
+    },
+    {
+      "code": 6052,
+      "name": "DistribuicaoMuitoCedo",
+      "msg": "Distribuicao de lucro antes do intervalo minimo"
+    },
+    {
+      "code": 6053,
+      "name": "ZeroLucro",
+      "msg": "Lucro realizado do ciclo tem que ser maior que zero"
+    },
+    {
+      "code": 6054,
+      "name": "JanelaDeLucroFechada",
+      "msg": "Janela de saque de lucro fechada — nao ha distribuicao aberta"
+    },
+    {
+      "code": 6055,
+      "name": "LucroJaSacado",
+      "msg": "Esta carteira ja sacou o lucro desta distribuicao"
+    },
+    {
+      "code": 6056,
+      "name": "SocioForaDaJanela",
+      "msg": "Socio saca pelo redeem_fee_share, nao pela janela dos cotistas"
+    },
+    {
+      "code": 6057,
+      "name": "JanelaDeLucroAberta",
+      "msg": "Janela de saque de lucro aberta — entrada e transferencia de cota estao fechadas"
+    },
+    {
+      "code": 6058,
+      "name": "SemLucroASacar",
+      "msg": "Carteira sem lucro a sacar nesta distribuicao"
+    },
+    {
+      "code": 6059,
+      "name": "ResgateAbaixoDoMinimo",
+      "msg": "Resgate de capital abaixo do minimo"
+    },
+    {
+      "code": 6060,
+      "name": "ResgateJaPago",
+      "msg": "Pedido de resgate ja foi pago"
+    },
+    {
+      "code": 6061,
+      "name": "PiorNavAcimaDoTeto",
+      "msg": "Pior NAV informado e maior que o teto do pedido"
+    },
+    {
+      "code": 6062,
+      "name": "PiorNavZero",
+      "msg": "Pior NAV informado tem que ser maior que zero"
+    },
+    {
+      "code": 6063,
+      "name": "SemSaldoNoEnderecoDeResgate",
+      "msg": "Endereco de resgate sem saldo para este pedido"
+    },
+    {
+      "code": 6064,
+      "name": "ResgateNaoVenceu",
+      "msg": "Pedido de resgate ainda nao venceu"
+    },
+    {
+      "code": 6065,
+      "name": "ResgateJaEmAtraso",
+      "msg": "Pedido de resgate ja esta marcado em atraso"
+    },
+    {
+      "code": 6066,
+      "name": "ResgatesEmAtraso",
+      "msg": "Ha resgate vencido nao pago — o cofre nao manda capital para campo"
+    },
+    {
+      "code": 6067,
+      "name": "LayoutVersaoInesperada",
+      "msg": "Layout da conta do cofre em versao inesperada"
+    },
+    {
+      "code": 6068,
+      "name": "EnderecoDeResgateInvalido",
+      "msg": "Conta informada nao e' o endereco de resgate do cofre"
+    },
+    {
+      "code": 6069,
+      "name": "CotasInsuficientes",
+      "msg": "Saldo de cotas insuficiente para o resgate pedido"
+    },
+    {
+      "code": 6070,
+      "name": "FilaNaoVazia",
+      "msg": "Fila de resgate nao esta vazia — migrar deixaria pedido sem porta"
+    },
+    {
+      "code": 6071,
+      "name": "NavPublicacaoMuitoCedo",
+      "msg": "Publicacao de NAV pelo oraculo antes do intervalo minimo"
+    },
+    {
+      "code": 6072,
+      "name": "SaqueLucroAbaixoDoMinimo",
+      "msg": "Lucro do ciclo abaixo do minimo de saque"
+    },
+    {
+      "code": 6073,
+      "name": "ParametroForaDoLimite",
+      "msg": "Valor fora do limite votavel para este parametro"
+    },
+    {
+      "code": 6074,
+      "name": "ParametrosIncoerentes",
+      "msg": "Parametros incoerentes entre si — o intervalo tem de caber na validade"
+    },
+    {
+      "code": 6075,
+      "name": "SupplyNaoZerado",
+      "msg": "O supply nao e' zero — a correcao so' roda em cofre vazio"
+    },
+    {
+      "code": 6076,
+      "name": "NadaACorrigir",
+      "msg": "Nada a corrigir: o campo ja' esta' zerado"
+    }
+  ],
+  "types": [
+    {
+      "name": "CapEnforcementEnabled",
+      "docs": [
+        "T11 — evento na ativação do cap. Só existe uma vez: a ativação é one-way (D3)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CapitalDeployed",
+      "docs": [
+        "Capital saindo da treasury para um destino operacional allowlisted.",
+        "",
+        "`treasury_pos` e `deployed_usdc` viajam no evento para o backend de NAV",
+        "fechar a conta sem precisar de outra chamada de RPC — mas a fonte de verdade",
+        "é o **estado**, não este evento: evento expira da janela de retenção do RPC",
+        "(a lição da DV12)."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "valor",
+            "type": "u64"
+          },
+          {
+            "name": "destino",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury_pos",
+            "type": "u64"
+          },
+          {
+            "name": "deployed_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CapitalReturned",
+      "docs": [
+        "Capital voltando para a treasury. Entrar é irrestrito: qualquer um pode",
+        "devolver ao cofre."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "valor",
+            "type": "u64"
+          },
+          {
+            "name": "origem",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury_pos",
+            "type": "u64"
+          },
+          {
+            "name": "deployed_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CycleRolled",
+      "docs": [
+        "T33 — virada de ciclo, detectada preguiçosamente na primeira chamada do",
+        "ciclo novo. Sem cron: quem vira o ciclo é quem chega primeiro depois dele."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "cycle_index",
+            "type": "u64"
+          },
+          {
+            "name": "previous_redeemed",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DeployAllowlistUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "indice",
+            "type": "u8"
+          },
+          {
+            "name": "destino",
+            "type": "pubkey"
+          },
+          {
+            "name": "anterior",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Deposited",
+      "docs": [
+        "`nav` é o do instante do depósito — o mesmo que gerou as cotas. Fica no",
+        "evento para que a conciliação não dependa de reler o estado depois."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "depositor",
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc",
+            "type": "u64"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          },
+          {
+            "name": "nav",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EnderecoDeResgateAtualizado",
+      "docs": [
+        "A mesa nomeou (ou trocou) a conta de onde os resgates de capital são pagos."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "anterior",
+            "type": "pubkey"
+          },
+          {
+            "name": "novo",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FeeShareLedger",
+      "docs": [
+        "Quanto de `fee_share` um sócio ainda não resgatou. PDA",
+        "`[FEE_SHARE_SEED, socio]`.",
+        "",
+        "Existe porque `fee_share` e cota comum são o mesmo mint e o saldo do token",
+        "account é um número só (D3.1). Sem este livro não há como distinguir a cota",
+        "que veio de taxa — e é essa distinção que autoriza o resgate instantâneo."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "socio",
+            "type": "pubkey"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FeeShareRedeemed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "socio",
+            "type": "pubkey"
+          },
+          {
+            "name": "shares",
+            "type": "u64"
+          },
+          {
+            "name": "usdc",
+            "type": "u64"
+          },
+          {
+            "name": "nav",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "JanelaDeLucroEncerrada",
+      "docs": [
+        "D-F2-09 — a janela de saque fechou porque o capital voltou a campo."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "nao_sacado",
+            "docs": [
+              "O que sobrou no bolo sem ser sacado. Não some do fundo: continua no",
+              "preço da cota de quem não sacou."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LucroDistribuido",
+      "docs": [
+        "D-F2-09 — uma distribuição de lucro realizado.",
+        "",
+        "Carrega o par de NAVs porque a emissão de cota de sócio dilui: sem",
+        "antes/depois não dá para conferir a distribuição sem refazer a conta. E",
+        "carrega o `P` de entrada porque **ele é a base da taxa** — quem audita",
+        "precisa ver que 60/40 saiu de um número que entrou em caixa, não de uma",
+        "valorização de marcação."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lucro_realizado",
+            "docs": [
+              "`P` — o lucro realizado que entrou na treasury nesta instrução."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "parcela_cotistas",
+            "docs": [
+              "40% de `P`. Sobe o NAV, e é o teto do bolo de saque."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "parcela_socios",
+            "docs": [
+              "60% de `P`. Vira cota nova nas três carteiras de sócio."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "nav_antes",
+            "type": "u64"
+          },
+          {
+            "name": "nav_depois",
+            "type": "u64"
+          },
+          {
+            "name": "delta_lucro_por_cota",
+            "docs": [
+              "`nav_depois - nav_antes`. É o que cada cota rende nesta distribuição."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "cotas_por_socio",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LucroSacado",
+      "docs": [
+        "Marca de saque de lucro de uma carteira. PDA `[LUCRO_SEED, owner]`.",
+        "",
+        "Existe por um motivo só, e é aritmético: o direito ao saque é",
+        "`cotas × delta`, e pagar não zera `cotas`. Sem marca, a mesma carteira saca",
+        "de novo — 196,36 na primeira chamada, 189,47 na segunda, 182,83 na terceira.",
+        "Cinco chamadas e sai com 4,7× o devido.",
+        "",
+        "Guarda o `ultima_distribuicao_ts` do último saque. Como esse carimbo é",
+        "estritamente crescente, `marca < vault.ultima_distribuicao_ts` é",
+        "\"ainda não sacou **desta** distribuição\" sem precisar de contador de ciclo.",
+        "",
+        "Criada no primeiro saque, `init_if_needed`. Quem nunca saca não paga rent."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "ultima_distribuicao_sacada",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LucroSacadoPorCotista",
+      "docs": [
+        "D-F2-09 — um cotista sacou o lucro da janela.",
+        "",
+        "`restante` sai no evento para o backend acompanhar o esvaziamento do bolo",
+        "sem precisar reler a conta a cada saque."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "cotista",
+            "type": "pubkey"
+          },
+          {
+            "name": "cotas_queimadas",
+            "docs": [
+              "Cotas queimadas para pagar. O saque devolve o cotista exatamente à",
+              "posição em USDC que ele tinha **antes** da distribuição."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "usdc",
+            "type": "u64"
+          },
+          {
+            "name": "nav",
+            "type": "u64"
+          },
+          {
+            "name": "restante",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "MinDepositUpdated",
+      "docs": [
+        "Mudança do piso de aporte. `anterior: 0` marca a migração — antes dela o",
+        "campo não existia."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "anterior",
+            "type": "u64"
+          },
+          {
+            "name": "novo",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "NavOracleTrocado",
+      "docs": [
+        "A mesa rotacionou a chave do oráculo de NAV.",
+        "",
+        "Vai a evento porque rotação é fato de segurança: quem indexa precisa saber a",
+        "partir de qual slot uma publicação assinada pela chave velha deixa de ser",
+        "legítima."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "anterior",
+            "type": "pubkey"
+          },
+          {
+            "name": "novo",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "NavPublished",
+      "docs": [
+        "T37 — NAV, hash de atestação e timestamp saem juntos. O hash é o que liga o",
+        "número publicado à apuração que o produziu; NAV sem atestação é opinião."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "nav",
+            "type": "u64"
+          },
+          {
+            "name": "attestation_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          },
+          {
+            "name": "publisher",
+            "type": "pubkey"
+          },
+          {
+            "name": "nav_anterior",
+            "docs": [
+              "NAV anterior, para o leitor do evento medir a variação sem precisar do",
+              "evento anterior — que pode já ter expirado da retenção do RPC."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pela_valvula",
+            "docs": [
+              "`true` quando a publicação passou **pela válvula da mesa**, fora do",
+              "limite de variação do oráculo. É fato de transparência, não detalhe de",
+              "implementação: NAV que atravessou o limite tem que ser visível."
+            ],
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Parametro",
+      "docs": [
+        "**Qual parâmetro a proposta ajusta.** Upgrade E (`D-F2-21`).",
+        "",
+        "Um enum e uma instrução, em vez de nove instruções irmãs. A razão é que a",
+        "validação de cada parâmetro **mora ao lado da atribuição** — separadas, nove",
+        "arquivos repetiriam a mesma forma e a primeira que esquecesse o `require!`",
+        "não pareceria diferente das outras.",
+        "",
+        "O custo é que a proposta chega ao Squads como um discriminante, e não como um",
+        "nome. **Quem monta a proposta é responsável por dizer, em voz alta, qual",
+        "parâmetro e qual valor** — como o runbook já manda para toda proposta."
+      ],
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "PrazoDoResgate"
+          },
+          {
+            "name": "MinResgateUsdc"
+          },
+          {
+            "name": "MinResgateCotas"
+          },
+          {
+            "name": "MinSaqueLucro"
+          },
+          {
+            "name": "NavStaleness"
+          },
+          {
+            "name": "IntervaloDePublicacao"
+          },
+          {
+            "name": "CadenciaDeDistribuicao"
+          },
+          {
+            "name": "NavBoundPct"
+          },
+          {
+            "name": "CapPct"
+          },
+          {
+            "name": "ReserveBps"
+          },
+          {
+            "name": "PerfFeeBps"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ParametroAjustado",
+      "docs": [
+        "Um parâmetro de política ajustado por proposta — Upgrade E.",
+        "",
+        "Carrega o anterior **e** o novo porque quem audita precisa saber se a",
+        "proposta mudou alguma coisa. Proposta que grava o mesmo valor passa, gasta",
+        "dois votos e não aparece em lugar nenhum sem este par."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "qual",
+            "docs": [
+              "O discriminante do `Parametro`. `u8` para o evento não depender do enum."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "anterior",
+            "type": "u64"
+          },
+          {
+            "name": "novo",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PauseToggled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "paused",
+            "type": "bool"
+          },
+          {
+            "name": "authority",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PedidoResgate",
+      "docs": [
+        "Um pedido de resgate de capital. PDA `[RESGATE_SEED, id_le_bytes]`.",
+        "",
+        "**Uma conta por pedido, e não um vetor no cofre.** A F2 tinha fila de 32",
+        "posições porque havia um pedido por carteira (D-F2-13). Com resgate parcial",
+        "permitido — N pedidos por carteira, cada fração com sua data e seu pior-NAV —",
+        "qualquer teto de vetor vira o próximo bug, e vetor dentro do cofre faria o",
+        "rent de um pedido depender de quantos outros existem. Aqui cada pedido paga o",
+        "próprio rent e não há recurso comum a esgotar.",
+        "",
+        "O dashboard enumera os pedidos de uma carteira por `getProgramAccounts` com",
+        "`memcmp` no `owner`. Funciona porque é o **nosso** programa — o Token Program,",
+        "que está fora dos índices secundários do RPC, não entra nessa consulta."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "docs": [
+              "Quem pediu. Só ele recebe o pagamento."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "id",
+            "docs": [
+              "O `proximo_pedido_id` do cofre no instante do pedido. Semeia a PDA."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "cotas",
+            "docs": [
+              "A fração travada, em cotas. Estas cotas estão em `escrow_dom` e serão",
+              "**queimadas** na efetivação — não devolvidas."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "solicitado_ts",
+            "docs": [
+              "Quando foi pedido. Início do período do pior-NAV."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "vence_ts",
+            "docs": [
+              "`solicitado_ts + RESGATE_CAPITAL_PRAZO`. **Teto, não carência:** a mesa",
+              "pode efetivar antes. Passado sem pagamento, o pedido pode ser marcado em",
+              "atraso e o cofre para de mandar capital para campo."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "nav_na_solicitacao",
+            "docs": [
+              "O `vault.nav` no instante do pedido. Serve de **teto** do pior-NAV.",
+              "",
+              "Gravado sem exigir NAV fresco, e isso é deliberado: a D-F2-03 fixou que",
+              "**pedido de resgate é direito do cotista e não fica refém do backend**.",
+              "Um NAV velho aqui produz um teto frouxo ou apertado, nunca um pagamento",
+              "errado — quem paga é o `pior_nav` que a mesa informa, e ele tem outras",
+              "três travas por cima."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pior_nav_visto",
+            "docs": [
+              "A catraca: o **menor** NAV já carimbado neste pedido.",
+              "",
+              "Nasce igual ao `nav_na_solicitacao` e só desce, por `carimbar_nav`, que é",
+              "**permissionless** — o backend chama a cada publicação, e o investidor",
+              "pode chamar pelo próprio pedido.",
+              "",
+              "**O que ela garante, e o que não garante.** Ela é limite **superior** do",
+              "pior-NAV: impede a mesa pagar acima de um NAV que comprovadamente",
+              "ocorreu, o que protege quem **fica** de ver o fundo diluído por um resgate",
+              "generoso. Ela **não** protege quem sai — para isso seria preciso provar",
+              "que nenhum NAV menor ocorreu, e o contrato não tem o histórico. Quem sai é",
+              "protegido por verificabilidade contra o log de `NavPublished`, não por",
+              "trava. Está dito assim no desenho porque fingir o contrário seria pior."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "estado",
+            "docs": [
+              "`0` aberto · `1` pago · `2` em atraso."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ResgateEfetivado",
+      "docs": [
+        "Um resgate de capital pago.",
+        "",
+        "**Este evento é a peça de auditoria do pior-NAV.** O contrato não consegue",
+        "provar que o `pior_nav` é o mínimo do período (§ do `resgate_capital.rs`);",
+        "quem prova é quem enumera os `NavPublished` entre `solicitado_ts` e",
+        "`efetivado_ts` e refaz o mínimo. Por isso os dois carimbos vão aqui, junto do",
+        "número usado — sem eles a conferência exigiria adivinhar o intervalo."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "cotas",
+            "type": "u64"
+          },
+          {
+            "name": "pior_nav",
+            "type": "u64"
+          },
+          {
+            "name": "valor",
+            "type": "u64"
+          },
+          {
+            "name": "solicitado_ts",
+            "type": "i64"
+          },
+          {
+            "name": "efetivado_ts",
+            "type": "i64"
+          },
+          {
+            "name": "nav_attestation",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "ResgateEmAtraso",
+      "docs": [
+        "Um pedido passou do prazo sem pagamento.",
+        "",
+        "Carrega o `total_em_atraso` porque é ele que trava o `deploy_capital`: quem",
+        "lê o evento consegue dizer se o cofre está impedido de mandar capital para",
+        "campo sem precisar ler a conta."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "cotas",
+            "type": "u64"
+          },
+          {
+            "name": "vence_ts",
+            "type": "i64"
+          },
+          {
+            "name": "marcado_ts",
+            "type": "i64"
+          },
+          {
+            "name": "total_em_atraso",
+            "type": "u32"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ResgateSolicitado",
+      "docs": [
+        "Um pedido de resgate de capital aberto.",
+        "",
+        "O `vence_ts` vai no evento porque é a data que o dashboard mostra e a que o",
+        "`marcar_vencido` cobra — e porque quem indexa não deveria precisar recalcular",
+        "`solicitado_ts + prazo` com a constante certa do momento certo."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "cotas",
+            "type": "u64"
+          },
+          {
+            "name": "nav_na_solicitacao",
+            "type": "u64"
+          },
+          {
+            "name": "solicitado_ts",
+            "type": "i64"
+          },
+          {
+            "name": "vence_ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SociosUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "socios",
+            "type": {
+              "array": [
+                "pubkey",
+                3
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Vault",
+      "docs": [
+        "Estado global do cofre. PDA `[VAULT_SEED]`.",
+        "",
+        "Cresce por bloco, com o campo entrando junto da instrução que o escreve",
+        "(P3).",
+        "",
+        "**Layout, 527 bytes** (8 de discriminador + 519 de dados). O `hwm` saiu no",
+        "D-F2-09 e todos os campos entre o byte 384 e o 519 andaram 8 bytes para",
+        "trás; `delta_lucro_por_cota` e `lucro_sacavel_restante` entraram no fim.",
+        "A conta viva de devnet foi de 519 para 527 por `migrate_vault_lucro`, que",
+        "desloca a cauda **antes** de zerar o rabo — nessa ordem, senão os bumps",
+        "morrem e o PDA para de assinar com dinheiro dentro. Mainnet nasce no",
+        "formato novo e não conhece essa instrução."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Vault PDA do Squads v4 (D2). Assina toda instrução privilegiada."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "socios",
+            "docs": [
+              "As três carteiras que recebem `fee_share`. **Distintas par a par**, em",
+              "todo ponto de escrita, não só no `initialize` (D10)."
+            ],
+            "type": {
+              "array": [
+                "pubkey",
+                3
+              ]
+            }
+          },
+          {
+            "name": "nav_oracle",
+            "docs": [
+              "Quem publica NAV. Separado da autoridade de propósito: publicar NAV é",
+              "operação de rotina do backend, não ato de governança (T35)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "dom_mint",
+            "docs": [
+              "Allowlist de um item só: o mint do DOM (D5.1)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc_mint",
+            "docs": [
+              "Mint do USDC aceito em `deposit`. Também é allowlist de um item: sem",
+              "isso, um depósito em token de brinquedo compraria cotas de verdade."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "Caixa do fundo em USDC. PDA `[TREASURY_SEED]`."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "escrow_dom",
+            "docs": [
+              "Cotas em escrow entre pedido e processamento. PDA `[ESCROW_DOM_SEED]`."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "escrow_authority",
+            "docs": [
+              "PDA `[ESCROW_SEED]`. Autoridade das contas do programa — isenta de",
+              "whitelist e de cap (D2/T24/D12)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "nav",
+            "docs": [
+              "NAV com 6 casas. Nasce em `NAV_GENESIS` e só muda por `publish_nav`.",
+              "**`deposit` não mexe** — novato não dilui antigo (T02)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "nav_ts",
+            "docs": [
+              "Timestamp do último NAV publicado. Monotônico (T36)."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "cotas_travadas_resgate",
+            "docs": [
+              "Soma das cotas travadas em pedidos de resgate de capital abertos.",
+              "",
+              "Invariante que o fuzz confere em toda parada: o saldo de `escrow_dom`",
+              "nunca é menor que isto.",
+              "",
+              "**Renomeado de `escrowed_shares`** quando a fila D+30 saiu. O sentido é o",
+              "mesmo — cota que saiu da carteira e está sob guarda do programa esperando",
+              "pagamento —, mudou o mecanismo que a coloca lá. Não é reaproveitamento de",
+              "byte morto: é o mesmo dado com o nome certo, como o",
+              "`last_accrue_ts → ultima_distribuicao_ts` do D-F2-09."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "reserve_bps",
+            "docs": [
+              "Reserva em pontos-base do NAV (D7). 1000 = 10%."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "paused",
+            "docs": [
+              "`pause` bloqueia entrada e pedido novo; **não** bloqueia o processamento",
+              "da fila que já existe (M9/T48)."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "cap_enforced",
+            "docs": [
+              "D3: nasce `false` na gênese, ativação é one-way."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "nav_attestation",
+            "docs": [
+              "DV12 — hash de atestação do NAV corrente, **em estado**.",
+              "",
+              "Já ia no evento `NavPublished`, e evento some da janela de retenção do",
+              "RPC: backend que reindexa do zero seis meses depois não reconstrói qual",
+              "atestação sustentava qual NAV. Em estado, sustenta."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "ultima_distribuicao_ts",
+            "docs": [
+              "DV10 — carimbo da última **distribuição de lucro**. `0` = nunca",
+              "distribuiu, e a primeira não espera cadência nenhuma.",
+              "",
+              "Renomeado de `last_accrue_ts` (D-F2-09): mesmo significado, mesmo lugar,",
+              "mesmos bytes — o que morreu foi a instrução, não o conceito. Renome não",
+              "move byte, então a conta viva não sente.",
+              "",
+              "**Também é a identidade da janela.** É estritamente crescente (a trava",
+              "de cadência garante), então serve sozinho de \"que distribuição é esta\"",
+              "para a marca de saque por carteira — sem contador de ciclo separado."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "deployed_usdc",
+            "docs": [
+              "Capital em campo: `deploy_capital` menos `return_capital`.",
+              "",
+              "Mesma lição da DV12 — o backend contabilizaria por evento, e evento",
+              "expira. Soma corrente em estado é o que sobrevive a uma reindexação."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "proximo_pedido_id",
+            "docs": [
+              "Contador monotônico que semeia a PDA de cada pedido: `[RESGATE_SEED, id]`.",
+              "",
+              "Só cresce. Nunca é reusado nem decrementado, nem quando um pedido é pago —",
+              "id reciclado permitiria recriar a PDA de um pedido já quitado."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "resgates_em_atraso",
+            "docs": [
+              "Quantos pedidos venceram o prazo de 180 dias sem pagamento.",
+              "",
+              "Enquanto for maior que zero, `deploy_capital` recusa. É o dente da decisão",
+              "de que o prazo é obrigação firme: não se aumenta a aposta devendo a quem",
+              "pediu para sair. Sobe por `marcar_vencido`, que é **permissionless** — o",
+              "próprio investidor prejudicado aciona, sem depender da mesa."
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "endereco_resgate",
+            "docs": [
+              "Conta de USDC de onde o resgate de capital é pago.",
+              "",
+              "A mesa a abastece **de fora** do cofre (empréstimo novo, saque de",
+              "empréstimo, lucro de trading) conforme a saúde das pernas. O contrato não",
+              "lê health factor, não toma empréstimo e não desmonta posição: ele confere",
+              "se esta conta tem saldo e paga. Toda a inteligência é da mesa.",
+              "",
+              "Tem de ser conta cuja autoridade é a `authority` — o Vault do Squads —,",
+              "igual à `origem_usdc` do `deposit_especial`: assim o pagamento é assinado",
+              "pelo mesmo quórum que o aprovou, e não se introduz confiança nova."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "deploy_allowlist",
+            "docs": [
+              "Destinos operacionais permitidos ao `deploy_capital`. Guarda a",
+              "**carteira** (owner), nunca a ATA: o token define a ATA, e allowlist de",
+              "ATA quebra a cada mint novo e não sobrevive a conta recriada.",
+              "",
+              "`Pubkey::default()` é vaga livre — e nunca casa, porque destino",
+              "zerado não tem como ser owner de conta de token válida."
+            ],
+            "type": {
+              "array": [
+                "pubkey",
+                2
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "escrow_bump",
+            "type": "u8"
+          },
+          {
+            "name": "treasury_bump",
+            "type": "u8"
+          },
+          {
+            "name": "min_deposit",
+            "docs": [
+              "Depósito mínimo em USDC, **em vigor**. Nasce em `MIN_DEPOSIT` e muda por",
+              "`update_min_deposit` — proposta, não upgrade.",
+              "",
+              "É parâmetro operacional: a mesa começa alto para migrar investidor sem",
+              "fuga de capital e baixa em etapas conforme democratiza. Fazer disso uma",
+              "constante custaria um redeploy por degrau."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "delta_lucro_por_cota",
+            "docs": [
+              "Quanto de USDC por cota a **última** distribuição gerou, na escala do",
+              "NAV. É o `nav_depois - nav_antes` daquela distribuição, congelado.",
+              "",
+              "Congelado, e não recalculado a partir do NAV corrente, de propósito: o",
+              "oráculo continua publicando durante a janela de saque, e um NAV novo no",
+              "meio dela faria quem sacasse primeiro levar mais do que o seu. Com o",
+              "delta preso, a ordem de chegada não muda o direito de ninguém.",
+              "",
+              "O direito de cada cotista é `cotas × delta / NAV_SCALE`, e a soma sobre",
+              "quem já estava dentro dá exatamente a parcela dos cotistas."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "lucro_sacavel_restante",
+            "docs": [
+              "Teto do bolo de saque de lucro ainda não pago, em USDC.",
+              "",
+              "Nasce em `40% de P` no `deposit_especial`, desce a cada saque e **zera",
+              "quando o capital volta a campo** (`deploy_capital`) — é o re-deploy do",
+              "ciclo seguinte que fecha a janela, não um cronômetro (D-F2-09).",
+              "",
+              "Faz três serviços num campo só:",
+              "1. `> 0` **é** a janela aberta — quem lê isto sabe se dá para sacar;",
+              "2. teto duro: as cotas que os sócios acabaram de receber existem na",
+              "hora do saque e, sem teto, reivindicariam mais do que o bolo tem;",
+              "3. trava de entrada: `deposit` e transferência de cota recusam",
+              "enquanto ele for `> 0`, senão quem entra na janela leva lucro que",
+              "não gerou."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "resgate_capital_prazo",
+            "docs": [
+              "Prazo do resgate de capital, em segundos. **É TETO, não carência.**"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "min_resgate_capital_usdc",
+            "docs": [
+              "Piso do pedido de resgate, em USDC. Ver o OU em `constants.rs`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "min_resgate_capital_cotas",
+            "docs": [
+              "Piso do pedido de resgate, em COTAS. A trava anti-colapso do OU."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "min_saque_lucro_usdc",
+            "docs": [
+              "Piso do saque de lucro, em USDC. Abaixo dele o saque **adia**, não perde."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "max_nav_staleness",
+            "docs": [
+              "Idade máxima do NAV, em segundos. Acima, seis instruções param."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "min_nav_publish_interval",
+            "docs": [
+              "Intervalo mínimo entre publicações **pelo oráculo**. A válvula não espera."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "distribuicao_interval",
+            "docs": [
+              "Cadência mínima entre distribuições de lucro, em segundos."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "nav_bound_pct",
+            "docs": [
+              "Variação máxima do NAV por publicação do oráculo, **em porcento**.",
+              "",
+              "Só o numerador vira campo: o denominador segue a constante 100. Campo",
+              "para o denominador seria um caminho para gravar zero e dividir por ele."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "cap_pct",
+            "docs": [
+              "Teto de concentração por carteira, **em porcento**. Mesma razão do acima."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "perf_fee_bps_por_socio",
+            "docs": [
+              "Taxa de performance de **cada** sócio, em pontos-base. 2.000 = 20%.",
+              "",
+              "A base é `P` — o lucro que voltou ao caixa pelo `deposit_especial` —, e",
+              "a parcela dos cotistas é o que sobra: `P − 3 × parcela`. Por isso este",
+              "campo é o único da lista com teto no binário",
+              "(`MAX_PERF_FEE_BPS_POR_SOCIO`, 2.500 = 25% cada, 75% no total): sem ele,",
+              "uma proposta da mesa poderia zerar a parcela dos cotistas sem que",
+              "nenhum cotista votasse. O teto é a parte que a votação não alcança."
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "layout_version",
+            "docs": [
+              "**Versão do layout desta conta. É, e continua sendo, o ÚLTIMO campo.**",
+              "",
+              "O discriminador do Anchor identifica **tipo**, não **versão**. Duas versões",
+              "do mesmo struct com o **mesmo tamanho** — o que acontece quando uma",
+              "migração compensa remoção com adição — têm discriminador igual, tamanho",
+              "igual, e o `Account<Vault>` **desserializa a errada em silêncio**, com os",
+              "campos trocados. Está provado em",
+              "`tests/estado_f2.rs::layout_do_mesmo_tamanho_desserializa_e_so_uma_trava_acidental_barra`:",
+              "o que barrou lá foi o `bump` deslocado quebrar a derivação da PDA, uma",
+              "trava acidental que depende do valor que calhou de cair no byte.",
+              "",
+              "**Ser o último campo não é estilo, é o que faz o campo funcionar.** Assim",
+              "ele se lê em `data[len-2..len]` — sem precisar conhecer o layout. Um campo",
+              "de versão em offset fixo no meio seria circular: para achá-lo você já",
+              "precisaria saber qual layout está lendo.",
+              "",
+              "**Campo novo entra ANTES deste.** Contraria o hábito de append-only do",
+              "Borsh, e é de propósito."
+            ],
+            "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VaultInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "nav_oracle",
+            "type": "pubkey"
+          },
+          {
+            "name": "socios",
+            "type": {
+              "array": [
+                "pubkey",
+                3
+              ]
+            }
+          },
+          {
+            "name": "dom_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "usdc_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "escrow_authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "nav",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WhitelistUpdated",
+      "docs": [
+        "T55 — toda atualização de whitelist emite evento."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "active",
+            "type": "bool"
+          },
+          {
+            "name": "min_deposit_proprio",
+            "docs": [
+              "`0` = sem excecao; vale o piso do cofre. Ver `D-F2-30`."
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ],
+  "constants": [
+    {
+      "name": "ESCROW_DOM_SEED",
+      "docs": [
+        "Cotas em escrow entre o pedido e o processamento (D8). Conta de token do",
+        "DOM cuja autoridade é o PDA `[ESCROW_SEED]`."
+      ],
+      "type": "bytes",
+      "value": "[101, 115, 99, 114, 111, 119, 45, 100, 111, 109]"
+    },
+    {
+      "name": "ESCROW_SEED",
+      "docs": [
+        "Autoridade das contas do programa (escrow de cotas em `request_redeem`).",
+        "É PDA, não chave humana — por isso é isenta de whitelist e de cap (D2/T24)."
+      ],
+      "type": "bytes",
+      "value": "[101, 115, 99, 114, 111, 119]"
+    },
+    {
+      "name": "EXTRA_ACCOUNT_METAS_SEED",
+      "docs": [
+        "Seed da conta de validação da transfer-hook-interface:",
+        "`[EXTRA_ACCOUNT_METAS_SEED, mint]`.",
+        "",
+        "O literal é o mesmo de `spl_transfer_hook_interface`, onde a constante é",
+        "privada. `get_extra_account_metas_address` do crate é a referência; se um dia",
+        "divergir, o `initialize_extra_account_meta_list` falha na conferência de",
+        "endereço em vez de gravar num PDA errado."
+      ],
+      "type": "bytes",
+      "value": "[101, 120, 116, 114, 97, 45, 97, 99, 99, 111, 117, 110, 116, 45, 109, 101, 116, 97, 115]"
+    },
+    {
+      "name": "FEE_SHARE_SEED",
+      "docs": [
+        "Livro de `fee_share` por sócio. PDA `[FEE_SHARE_SEED, socio]`.",
+        "",
+        "`fee_share` e cota comum são o **mesmo mint**: a origem é flag em estado do",
+        "programa, não no token account (D3.1). Este livro é essa flag."
+      ],
+      "type": "bytes",
+      "value": "[102, 101, 101, 45, 115, 104, 97, 114, 101]"
+    },
+    {
+      "name": "LAYOUT_VERSION",
+      "docs": [
+        "**Versão do layout da conta `Vault`. Sobe a cada upgrade que mude o layout.**",
+        "",
+        "`1` foi o layout que nasceu com o campo — o do resgate de capital, 541 bytes.",
+        "Layouts anteriores (519 e 527) não têm o campo e são reconhecidos pelo",
+        "tamanho, que naqueles casos ainda distinguia.",
+        "",
+        "O `Vault.layout_version` é conferido pelas instruções contra esta constante.",
+        "O que ela fecha está provado em",
+        "`tests/estado_f2.rs::layout_do_mesmo_tamanho_desserializa_e_so_uma_trava_acidental_barra`:",
+        "dois layouts do mesmo tamanho passam pelo discriminador e pela guarda de",
+        "tamanho, e o que barra hoje são travas acidentais dependentes de dado."
+      ],
+      "type": "u16",
+      "value": "2"
+    },
+    {
+      "name": "LUCRO_SEED",
+      "docs": [
+        "Marca de saque de lucro por carteira: PDA `[LUCRO_SEED, cotista]`.",
+        "",
+        "Guarda **um** `i64`: o `ultima_distribuicao_ts` do último saque daquela",
+        "carteira. Sem ela o mesmo cotista saca em laço dentro da mesma janela — o",
+        "direito é `cotas × delta`, e `cotas` continua positivo depois do pagamento.",
+        "",
+        "Criada preguiçosamente, no primeiro saque. Não toca o `deposit`, não entra",
+        "na gênese, não custa nada a quem nunca sacar."
+      ],
+      "type": "bytes",
+      "value": "[108, 117, 99, 114, 111]"
+    },
+    {
+      "name": "MIN_DEPOSIT",
+      "docs": [
+        "Depósito mínimo: 200,000000 USDC. **Limite inclusivo** — 200 exatos entram,",
+        "199,999999 não (T03/T04)."
+      ],
+      "type": "u64",
+      "value": "100000000"
+    },
+    {
+      "name": "MIN_NAV_PUBLISH_INTERVAL",
+      "docs": [
+        "**Intervalo mínimo entre publicações do ORÁCULO. Uma hora.**",
+        "",
+        "O limite de 15% por publicação (`NAV_BOUND`) protege contra o dedo gordo de um",
+        "operador honesto. Ele **não** protegia contra quem tem a chave: não havia",
+        "intervalo mínimo, a monotonicidade só exige `timestamp > nav_ts`, e o relógio",
+        "da rede tem granularidade de um segundo. Teto: uma publicação por segundo.",
+        "",
+        "```text",
+        "0,85^5 = 0,4437   cinco segundos levavam o NAV a menos da metade",
+        "1,15^5 = 2,0114   cinco segundos dobravam o NAV",
+        "```",
+        "",
+        "**O limite de 15% comprava cinco segundos.** Com intervalo de uma hora ele",
+        "vira limite de TAXA: dobrar o NAV passa a levar cinco horas, que é janela em",
+        "que gente humana percebe e reage — e agora tem com o que reagir, porque o",
+        "`set_nav_oracle` existe.",
+        "",
+        "**A válvula da mesa não tem intervalo.** Quem atravessa por proposta, com dois",
+        "votos, é caminho de crise: pôr carência nele seria travar o cofre justamente",
+        "no dia em que ele precisa ser destravado."
+      ],
+      "type": "i64",
+      "value": "3600"
+    },
+    {
+      "name": "NAV_GENESIS",
+      "docs": [
+        "NAV da gênese = 1,000000. Primeiro depósito sai 1:1 (T01)."
+      ],
+      "type": "u64",
+      "value": "1000000"
+    },
+    {
+      "name": "NAV_SCALE",
+      "docs": [
+        "NAV com 6 casas: `1_000_000` = 1,000000 (D9). Mesma escala do token e do",
+        "USDC, então cota e USDC compartilham a unidade e não há conversão de escala."
+      ],
+      "type": "u64",
+      "value": "1000000"
+    },
+    {
+      "name": "PERF_FEE_BPS_POR_SOCIO",
+      "docs": [
+        "Taxa de performance **por sócio**, em pontos-base do **lucro realizado do",
+        "ciclo** (`P`). 2.000 bps = 20% para cada uma das três carteiras — ver D21.",
+        "",
+        "**A base mudou (D-F2-09).** Era \"o que passou do high water mark\", régua do",
+        "fundo tradicional que a mesa não adotou: ela cobrava sobre valorização de",
+        "NAV, inclusive a que veio só de marcação, e transformava marcação em caixa",
+        "saindo do cofre pelo `redeem_fee_share`. Agora a base é `P` — dinheiro que",
+        "**voltou** para o caixa e entrou pelo `deposit_especial`. Não há como",
+        "inventar `P`: ele é o valor transferido na própria instrução.",
+        "",
+        "3 × 20% = 60% para os sócios, 40% para os cotistas via NAV."
+      ],
+      "type": "u16",
+      "value": "2000"
+    },
+    {
+      "name": "RESERVE_BPS",
+      "docs": [
+        "Reserva de 10% do NAV (D7). Intocável por `redeem_fee_share`, **consumível**",
+        "por `process_redemptions` — a reserva existe para a fila."
+      ],
+      "type": "u16",
+      "value": "1000"
+    },
+    {
+      "name": "RESGATE_CAPITAL_PRAZO",
+      "docs": [
+        "**D+180 — o teto do prazo de resgate de capital.**",
+        "",
+        "Teto, não carência: a mesa pode efetivar antes se a saúde da posição permitir,",
+        "e o contrato **não** exige que o prazo tenha vencido para pagar. O que ele faz",
+        "com esta data é o contrário — passado o vencimento sem pagamento, o pedido",
+        "pode ser marcado em atraso e o cofre para de mandar capital para campo."
+      ],
+      "type": "i64",
+      "value": "15552000"
+    },
+    {
+      "name": "RESGATE_SEED",
+      "docs": [
+        "Um pedido de resgate de capital. PDA `[RESGATE_SEED, id_le_bytes]`.",
+        "",
+        "**Conta por pedido, e não vetor no cofre.** A F2 tinha uma fila de tamanho",
+        "fixo (32 posições) porque havia um pedido por carteira. Com resgate parcial",
+        "permitido, N pedidos por carteira, qualquer teto de vetor vira o próximo bug —",
+        "e vetor dentro do cofre faria o rent de um pedido depender de quantos outros",
+        "existem. O contador global custa 8 bytes e não tem limite."
+      ],
+      "type": "bytes",
+      "value": "[114, 101, 115, 103, 97, 116, 101]"
+    },
+    {
+      "name": "TREASURY_SEED",
+      "docs": [
+        "Caixa do fundo em USDC. PDA `[TREASURY_SEED]`, autoridade = PDA do cofre."
+      ],
+      "type": "bytes",
+      "value": "[116, 114, 101, 97, 115, 117, 114, 121]"
+    },
+    {
+      "name": "VAULT_SEED",
+      "docs": [
+        "PDA único de estado do cofre."
+      ],
+      "type": "bytes",
+      "value": "[118, 97, 117, 108, 116]"
+    },
+    {
+      "name": "WHITELIST_SEED",
+      "docs": [
+        "PDA por carteira: `[WHITELIST_SEED, owner]`."
+      ],
+      "type": "bytes",
+      "value": "[119, 104, 105, 116, 101, 108, 105, 115, 116]"
+    }
+  ]
+}
