@@ -344,9 +344,20 @@ fn t65_initialize_extra_account_meta_list_rejeita_nao_autoridade() {
 /// nova sem teste de recusa quebra aqui**, com o nome dela na mensagem.
 #[test]
 fn t89_a_lista_de_privilegiadas_sai_do_idl() {
+    // ⚠️ O VERSIONADO, e nao o artefato de build — descoberto em 14/09.
+    //
+    // Era `CARGO_TARGET_TMPDIR/../idl/`, que resolve para `target/idl/` — a
+    // pasta que o `anchor idl build` escreve. No repositorio de trabalho ela
+    // existe sempre, porque o build roda o tempo todo. **Num clone limpo do
+    // espelho publico, nao existe** — e a suite inteira deixa de compilar.
+    //
+    // O espelho versiona o IDL em `idl/dom_vault.json`, na raiz, e a CI cobra
+    // que os dois sejam iguais (`snapshot_do_idl`). Ler o versionado da o mesmo
+    // resultado nos dois repositorios, e faz o clone limpo funcionar — que e' o
+    // caminho que a carta ao investidor manda seguir.
     const IDL: &str = include_str!(concat!(
-        env!("CARGO_TARGET_TMPDIR"),
-        "/../idl/dom_vault.json"
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../idl/dom_vault.json"
     ));
 
     let idl: serde_json::Value = serde_json::from_str(IDL).unwrap();

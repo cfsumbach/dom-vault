@@ -18,7 +18,7 @@ Existe para uma coisa so': **qualquer pessoa refazer o binario e conferir o
 | tamanho | 691224 bytes |
 | instrucoes no IDL | 26 |
 | erros no IDL | 77 |
-| gerado em | 2026-09-14T21:43:56Z |
+| gerado em | 2026-09-14T22:39:38Z |
 
 ## Sobre o `idl/dom_vault.json` — leia antes de vendorizar
 
