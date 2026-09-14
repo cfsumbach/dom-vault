@@ -79,12 +79,33 @@ pub fn handle_deposit(ctx: Context<Deposit>, usdc_amount: u64) -> Result<()> {
     // G tem 42 bytes, nao carrega o campo, e le' como 0 — entao nada muda para
     // ninguem ate' a mesa decidir mudar, carteira a carteira, por proposta 2/3.
     //
-    // E' MECANISMO, NAO POLITICA. Nao ha' regra automatica aqui de proposito: se
-    // um dia houver ("quem ja' e' cotista aporta a partir de X"), ela nasce em
-    // cima deste campo, e a mesa a decide com casos reais na mao em vez de no
-    // papel. O campo sem a regra serve; a regra sem o campo nao existe.
     // -----------------------------------------------------------------------
-    let piso = if piso_proprio > 0 {
+    // D-F2-33 — O PISO E' DE ENTRADA. QUEM JA' ENTROU NAO ENTRA DUAS VEZES.
+    //
+    // O `min_deposit` existe para dimensionar QUEM ENTRA no fundo: e' o tamanho
+    // minimo de uma posicao nova. Aplica-lo de novo a quem ja' e' cotista nao
+    // protege nada e produz o absurdo de o fundo RECUSAR dinheiro de quem ja'
+    // esta' dentro — inclusive de quem quer aportar o troco de uma colheita.
+    //
+    // O Upgrade G entregou `min_deposit_proprio`, que e' excecao POR CARTEIRA e
+    // exige uma proposta 2/3 para cada investidor. Isso resolvia o caso da mesa
+    // conceder piso menor a alguem; nao resolvia — e piorava — o reaporte, que
+    // e' automatico por natureza e nao deveria custar voto nenhum.
+    //
+    // ⚠️ A LEITURA E' ANTES DA EMISSAO, e tem de ser.
+    //
+    // `depositor_dom.amount` aqui e' o saldo ANTERIOR: o `mint_to` acontece
+    // depois. Lido depois, todo aporte seria de cotista e o piso nunca valeria
+    // para ninguem — o defeito mais caro possivel, na direcao de deixar entrar.
+    //
+    // E poeira continua barrada por `ZeroShares` (linha abaixo): aporte que nao
+    // produz uma cota inteira e' recusado, com ou sem piso.
+    // -----------------------------------------------------------------------
+    let ja_e_cotista = ctx.accounts.depositor_dom.amount > 0;
+
+    let piso = if ja_e_cotista {
+        0
+    } else if piso_proprio > 0 {
         piso_proprio
     } else {
         ctx.accounts.vault.min_deposit

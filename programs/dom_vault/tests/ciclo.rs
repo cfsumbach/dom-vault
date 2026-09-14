@@ -43,21 +43,24 @@ fn t56_ciclo_completo() {
     );
 
     // -----------------------------------------------------------------------
-    // 3. deposit_especial — o lucro REALIZADO do ciclo entra e se reparte
-    //    60/20/20/... 4.000 USDC de P sobre 20.000 cotas ao NAV 1,20:
-    //      aos socios  = 2.400 (800 cada)
-    //      aos cotistas = 1.600 -> NAV = (24.000 + 1.600) / 20.000 = 1,280000
+    // 3. deposit_especial — o lucro REALIZADO do ciclo entra e se reparte.
+    //
+    //    `D-F2-35`: 50% no TOTAL, e a divisao por tres vem DEPOIS. 4.000 USDC
+    //    de P sobre 20.000 cotas ao NAV 1,20:
+    //      aos socios   = 2.000 -> 666,666666 cada, e sobram 2 lamports
+    //      aos cotistas = 2.000,000002 (a sobra e' deles)
+    //      NAV = (24.000 + 2.000) / 20.000 = 1,300000
     // -----------------------------------------------------------------------
     let patrimonio_antes = env.supply_dom() as u128 * env.vault().nav as u128 / UNIT as u128;
     env.deposit_especial(4_000 * UNIT);
 
     let vault = env.vault();
-    assert_eq!(vault.nav, 1_280_000, "NAV pos-distribuicao");
-    assert_eq!(vault.delta_lucro_por_cota, 80_000, "delta congelado");
+    assert_eq!(vault.nav, 1_300_000, "NAV pos-distribuicao");
+    assert_eq!(vault.delta_lucro_por_cota, 100_000, "delta congelado");
     assert_eq!(
         vault.lucro_sacavel_restante,
-        1_600 * UNIT,
-        "janela aberta com 40% de P"
+        2_000 * UNIT,
+        "janela aberta com o que os cotistas conseguem sacar: supply x delta"
     );
     for socio in env.socios.iter() {
         assert!(
@@ -82,7 +85,7 @@ fn t56_ciclo_completo() {
     assert_eq!(env.saldo_escrow(), cotas_ana);
     assert_eq!(env.vault().cotas_travadas_resgate, cotas_ana);
     let teto = env.pedido(id).nav_na_solicitacao;
-    assert_eq!(teto, 1_280_000, "o NAV do pedido e' TETO, nao preco");
+    assert_eq!(teto, 1_300_000, "o NAV do pedido e' TETO, nao preco");
 
     // -----------------------------------------------------------------------
     // 5. o período — o NAV oscila, a catraca desce, e a efetivação paga pelo

@@ -386,6 +386,10 @@ fn t89_a_lista_de_privilegiadas_sai_do_idl() {
         ("efetivar_resgate_capital", "T54 / resgate_capital.rs"),
         ("pause", "T54 / T49"),
         ("set_nav_oracle", "T54"),
+        // `D-F2-34` — a caneta que NOMEIA o porteiro da whitelist. So' a mesa,
+        // 2/3. `Pubkey::default()` destitui, e por isso nao ha' instrucao de
+        // revogacao separada — que seria a que ninguem testa.
+        ("set_whitelist_operator", "T54 / porteiro.rs"),
         ("unpause", "T54 / T49"),
         ("update_endereco_resgate", "T54 / resgate_capital.rs"),
         ("update_deploy_allowlist", "T54 / T81b"),
@@ -435,9 +439,18 @@ fn t89_a_lista_de_privilegiadas_sai_do_idl() {
     // O G tambem trouxe a `deposit_para`, que NAO entra nesta conta: ela nao
     // tem `authority`, e quem paga assina por si. Conferir isto e' o servico
     // deste teste — a lista sai do IDL, nao de memoria.
+    //
+    // **O Upgrade H levou a quinze para DEZESSEIS**, com a `set_whitelist_operator`
+    // (`D-F2-34`). Ela e' permanente, e nao temporaria como as duas acima: nomear
+    // e destituir o porteiro e' ato de mesa que vai existir enquanto houver
+    // whitelist.
+    //
+    // ⚠️ E a `update_whitelist` CONTINUA nesta lista mesmo tendo ganhado o
+    // caminho do porteiro. Ela segue aceitando a autoridade, e o porteiro e' uma
+    // porta a mais — nao a substituicao da caneta da mesa.
     assert_eq!(
         do_idl.len(),
-        15,
+        16,
         "contagem de privilegiadas mudou: {do_idl:?}"
     );
 

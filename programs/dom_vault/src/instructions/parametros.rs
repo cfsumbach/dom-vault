@@ -91,7 +91,7 @@ pub fn handle_ajustar_parametro(
         Parametro::NavBoundPct => vault.nav_bound_pct as u64,
         Parametro::CapPct => vault.cap_pct as u64,
         Parametro::ReserveBps => vault.reserve_bps as u64,
-        Parametro::PerfFeeBps => vault.perf_fee_bps_por_socio as u64,
+        Parametro::PerfFeeBps => vault.perf_fee_bps_total as u64,
     };
 
     match qual {
@@ -175,11 +175,15 @@ pub fn handle_ajustar_parametro(
         }
         Parametro::PerfFeeBps => {
             let v = u16::try_from(novo).map_err(|_| error!(DomError::ParametroForaDoLimite))?;
+            // O PISO entra no binario junto com o teto — `D-F2-35`. A mesa
+            // publicou "50% do lucro realizado"; sem piso, esse numero era
+            // palavra dada. Com ele, e' a parte que a votacao nao alcanca, do
+            // mesmo jeito que o teto protege a parcela dos cotistas por cima.
             require!(
-                v <= MAX_PERF_FEE_BPS_POR_SOCIO,
+                (MIN_PERF_FEE_BPS_TOTAL..=MAX_PERF_FEE_BPS_TOTAL).contains(&v),
                 DomError::ParametroForaDoLimite
             );
-            vault.perf_fee_bps_por_socio = v;
+            vault.perf_fee_bps_total = v;
         }
     }
 

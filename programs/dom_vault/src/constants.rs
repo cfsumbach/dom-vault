@@ -4,6 +4,17 @@ use anchor_lang::prelude::*;
 #[constant]
 pub const VAULT_SEED: &[u8] = b"vault";
 
+/// PDA unica do porteiro da whitelist: `[WL_OPERATOR_SEED]` — `D-F2-34`.
+///
+/// ⚠️ CONTA PROPRIA, E NAO CAMPO NO `Vault`. O campo custaria 32 bytes a mais
+/// no cofre, e crescer o `Vault` obriga a REALOCAR a conta em mainnet: ate' a
+/// migracao rodar, `Account<Vault>` falha a desserializacao em TODA instrucao —
+/// aporte, resgate, hook. Apagao total por um campo de delegacao.
+///
+/// Conta a parte e' aditiva: quem nao a tem simplesmente nao tem porteiro, e
+/// nada muda.
+pub const WL_OPERATOR_SEED: &[u8] = b"wl-operator";
+
 /// PDA por carteira: `[WHITELIST_SEED, owner]`.
 #[constant]
 pub const WHITELIST_SEED: &[u8] = b"whitelist";
@@ -75,7 +86,17 @@ pub const FEE_SHARE_SEED: &[u8] = b"fee-share";
 ///
 /// 3 × 20% = 60% para os sócios, 40% para os cotistas via NAV.
 #[constant]
-pub const PERF_FEE_BPS_POR_SOCIO: u16 = 2_000;
+/// A taxa de performance **TOTAL**, em pontos-base — `D-F2-35`.
+///
+/// ⚠️ ERA POR SOCIO, E VIROU TOTAL. A razao e' aritmetica: com o campo por
+/// socio, o contrato cobrava `P x bps / 10000` tres vezes, e **50% exatos nao
+/// existem** — `5000/3 = 1666,67`, e bps e' inteiro. 1666 dava 49,98% e 1667
+/// daria 50,01%.
+///
+/// Com o total no campo, a parcela dos cotistas e' `P - P x total / 10000`, que
+/// fecha exato. A divisao entre os tres acontece DEPOIS, e a sobra do
+/// truncamento vai para os cotistas.
+pub const PERF_FEE_BPS_TOTAL: u16 = 5_000;
 
 /// Quantos sócios. Não é configurável: o 20/20/20 pressupõe três destinos.
 pub const NUM_SOCIOS: usize = 3;
@@ -343,7 +364,20 @@ pub const MAX_RESERVE_BPS_VOTAVEL: u16 = 5_000;
 /// mesa se pagar 100% do lucro realizado por proposta, e a parcela dos
 /// cotistas (`P − 3 × parcela`) iria a zero sem que nenhum cotista votasse.
 /// O teto é a promessa que o binário sustenta e a votação não alcança.
-pub const MAX_PERF_FEE_BPS_POR_SOCIO: u16 = 2_500;
+pub const MAX_PERF_FEE_BPS_TOTAL: u16 = 7_500;
+
+/// **O PISO, e ele esta' no binario — `D-F2-35`.**
+///
+/// A mesa publicou "50% do lucro realizado" em pagina publica. Sem piso no
+/// binario, esse numero era palavra dada; com ele, e' a parte que a votacao nao
+/// alcanca — do mesmo jeito que o teto.
+///
+/// ⚠️ E ele tem um segundo trabalho, que e' de seguranca de MIGRACAO. No
+/// instante do upgrade o campo ainda guarda `1666`, que no significado NOVO
+/// seria 16,66% no total. Um `deposit_especial` nessa janela cobraria um terco
+/// da taxa e ninguem notaria — o numero existe, nao estoura, e esta' errado.
+/// Com o piso, a distribuicao RECUSA ate' a mesa ajustar para 5000.
+pub const MIN_PERF_FEE_BPS_TOTAL: u16 = 5_000;
 
 /// **Intervalo mínimo entre publicações do ORÁCULO. Uma hora.**
 ///

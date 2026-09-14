@@ -25,22 +25,29 @@ use {
 // inteira caia na trava nova.
 //
 // Escalados os DOIS por 5, e nao so' o `P`: a razao `parcela_cotistas / cotas`
-// fica identica, entao **NAV e delta nao mudam** (1,080000 e 0,080000) e nenhum
-// assert de aritmetica precisou ser recalculado. So' os valores em USDC sobem
-// junto, que e' o que a trava mede.
+// fica identica, entao NAV e delta nao mudam com a escala. So' os valores em
+// USDC sobem junto, que e' o que a trava mede.
+//
+// `D-F2-35` mudou a REPARTICAO, e ai' sim NAV e delta mudaram: de 1,080000 e
+// 0,080000 para 1,100000 e 0,100000, porque os cotistas passaram de 40% para
+// 50% de P.
 const APORTE: u64 = 5_000 * UNIT;
-/// `P` do ciclo. 60% = 600 aos sócios, 40% = 400 ao bolo dos cotistas.
+/// `P` do ciclo. 50% = 500 aos sócios (166,666666 cada, e 2 lamports de sobra),
+/// e 500,000002 ao bolo dos cotistas — a sobra é deles (`D-F2-35`).
 const LUCRO: u64 = 1_000 * UNIT;
 
 /// Cofre com um cotista de 5.000 cotas e uma distribuição de 1.000 já feita.
-/// NAV 1,080000, delta 0,080000, bolo de 400 USDC.
+/// NAV 1,100000, delta 0,100000, bolo de 500 USDC.
+///
+/// O bolo é `supply × delta`, e não a parcela dos cotistas: os 2 lamports de
+/// sobra subiram o patrimônio e não têm dono que os saque. Ver `D-F2-35`.
 fn cofre_com_janela_aberta() -> (Env, Holder) {
     let mut env = Env::new();
     let cotista = env.cotista(APORTE);
     env.deposit_especial(LUCRO);
-    assert_eq!(env.vault().nav, 1_080_000);
-    assert_eq!(env.vault().delta_lucro_por_cota, 80_000);
-    assert_eq!(env.vault().lucro_sacavel_restante, 400 * UNIT);
+    assert_eq!(env.vault().nav, 1_100_000);
+    assert_eq!(env.vault().delta_lucro_por_cota, 100_000);
+    assert_eq!(env.vault().lucro_sacavel_restante, 500 * UNIT);
     (env, cotista)
 }
 
@@ -54,9 +61,9 @@ fn cofre_com_janela_aberta() -> (Env, Holder) {
 /// **antes** da distribuição. Não é aproximação: é a álgebra de queimar
 /// `valor / nav` cotas.
 ///
-///   1.000 cotas x 0,08 = 80 USDC sacados
-///   queima 80 / 1,08 = 74,074074 cotas
-///   sobram 925,925926 cotas x 1,08 = 1.000,000000 USDC — o aporte original
+///   5.000 cotas x 0,10 = 500 USDC sacados
+///   queima 500 / 1,10 = 454,545454 cotas
+///   sobram 4.545,454546 cotas x 1,10 = 5.000,000000 USDC — o aporte original
 #[test]
 fn saque_devolve_o_cotista_a_posicao_pre_distribuicao() {
     let (mut env, cotista) = cofre_com_janela_aberta();
@@ -68,12 +75,12 @@ fn saque_devolve_o_cotista_a_posicao_pre_distribuicao() {
 
     assert_eq!(
         env.saldo_usdc(&cotista) - usdc_antes,
-        400 * UNIT,
-        "sacou 40% de P — o cotista detem todas as cotas pre-distribuicao"
+        500 * UNIT,
+        "sacou 50% de P — o cotista detem todas as cotas pre-distribuicao"
     );
     assert_eq!(
         env.saldo_dom(&cotista),
-        APORTE - 370_370_370,
+        APORTE - 454_545_454,
         "cota queimada"
     );
     assert_eq!(env.vault().nav, nav, "queimar ao NAV nao mexe no NAV");
@@ -93,9 +100,9 @@ fn a_soma_dos_saques_nao_passa_do_bolo() {
     let mut env = Env::new();
     let a = env.cotista(600 * UNIT);
     let b = env.cotista(400 * UNIT);
-    // `P` proprio, maior que o da fixture: com o bolo de 400 dividido 60/40, o
-    // `b` sacaria 160 e bateria no piso do Upgrade D. O que este teste afirma e'
-    // o TETO global, nao o piso — entao o piso nao pode ser o que o derruba.
+    // `P` proprio, maior que o da fixture: com um bolo pequeno o `b` bateria no
+    // piso do Upgrade D. O que este teste afirma e' o TETO global, nao o piso —
+    // entao o piso nao pode ser o que o derruba.
     env.deposit_especial(2_000 * UNIT);
 
     let bolo = env.vault().lucro_sacavel_restante;
@@ -106,7 +113,7 @@ fn a_soma_dos_saques_nao_passa_do_bolo() {
     env.sacar_lucro(&b);
 
     let sacado = (env.saldo_usdc(&a) - ua) + (env.saldo_usdc(&b) - ub);
-    assert_eq!(sacado, bolo, "60/40 fecha na unidade");
+    assert_eq!(sacado, bolo, "a soma dos saques fecha no bolo, na unidade");
     assert_eq!(env.vault().lucro_sacavel_restante, 0);
 }
 
@@ -350,9 +357,13 @@ fn distribuicao_seguinte_fecha_a_janela_esquecida() {
     env.avancar(DISTRIBUICAO_INTERVAL);
     env.deposit_especial(LUCRO);
 
+    // 499,996363 e nao 500: na segunda distribuicao o `supply` ja' cresceu com
+    // as cotas dos socios da primeira, entao `delta = parcela / supply` trunca
+    // um pouco mais. O que este ensaio afirma e' que o bolo e' NOVO — nao a soma
+    // com o da janela anterior, que seria 1.000.
     assert_eq!(
         env.vault().lucro_sacavel_restante,
-        400 * UNIT,
+        499_996_363,
         "bolo NOVO, nao o acumulado"
     );
 

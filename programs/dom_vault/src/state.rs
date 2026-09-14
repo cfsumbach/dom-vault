@@ -199,7 +199,7 @@ pub struct Vault {
     pub nav_bound_pct: u16,
     /// Teto de concentração por carteira, **em porcento**. Mesma razão do acima.
     pub cap_pct: u16,
-    /// Taxa de performance de **cada** sócio, em pontos-base. 2.000 = 20%.
+    /// Taxa de performance **TOTAL** do ciclo, em pontos-base. 5.000 = 50%.
     ///
     /// A base é `P` — o lucro que voltou ao caixa pelo `deposit_especial` —, e
     /// a parcela dos cotistas é o que sobra: `P − 3 × parcela`. Por isso este
@@ -207,7 +207,7 @@ pub struct Vault {
     /// (`MAX_PERF_FEE_BPS_POR_SOCIO`, 2.500 = 25% cada, 75% no total): sem ele,
     /// uma proposta da mesa poderia zerar a parcela dos cotistas sem que
     /// nenhum cotista votasse. O teto é a parte que a votação não alcança.
-    pub perf_fee_bps_por_socio: u16,
+    pub perf_fee_bps_total: u16,
     /// **Versão do layout desta conta. É, e continua sendo, o ÚLTIMO campo.**
     ///
     /// O discriminador do Anchor identifica **tipo**, não **versão**. Duas versões
@@ -253,6 +253,34 @@ pub struct LucroSacado {
 ///
 /// A ausência da conta é rejeição, nunca omissão (D5). Por isso o hook não usa
 /// `Option` nem trata "conta vazia" como neutra.
+/// **O porteiro da whitelist — `D-F2-34`.** PDA unica `[WL_OPERATOR_SEED]`.
+///
+/// Aprovar cotista era uma proposta 2/3 POR PESSOA. O gargalo nunca foi a
+/// decisao — a mesa ja' decide na fila do painel —, era a assinatura de hardware
+/// para executar uma decisao ja' tomada. Com uma lista de espera, isso vira o
+/// que trava a captacao.
+///
+/// ⚠️ **O QUE ESTA CHAVE PODE, E O QUE ELA NAO PODE.**
+///
+/// Pode: inscrever e desinscrever carteiras, e definir o piso proprio de cada
+/// uma. Nao pode: mover um centavo, mudar parametro, pausar, emitir cota,
+/// atualizar o programa. **Ela abre a porta do fundo, e so.**
+///
+/// O que se perde e' real e vale dito: uma chave sozinha passa a poder deixar
+/// entrar quem quiser, e a desinscrever quem ja' esta'. O que limita o estrago e'
+/// que entrar no fundo exige APORTAR, e que a mesa nomeia e destitui o porteiro
+/// por 2/3 — e cada ato dele fica na cadeia com a chave que assinou.
+///
+/// **Conta a parte, e nao campo no `Vault`.** Campo custaria realocar o cofre em
+/// mainnet, e `Account<Vault>` falharia em toda instrucao ate' a migracao rodar.
+#[account]
+#[derive(InitSpace)]
+pub struct WhitelistOperator {
+    /// Quem aprova. Trocar e' ato da mesa.
+    pub operator: Pubkey,
+    pub bump: u8,
+}
+
 #[account]
 #[derive(InitSpace)]
 pub struct WhitelistEntry {

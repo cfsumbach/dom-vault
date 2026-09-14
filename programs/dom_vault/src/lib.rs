@@ -94,6 +94,14 @@ pub mod dom_vault {
 
     /// O terceiro argumento entrou no Upgrade G (`D-F2-30`): piso de aporte
     /// so' desta carteira, `0` = usa o do cofre.
+    /// Nomeia (ou destitui, com `Pubkey::default()`) o porteiro da whitelist.
+    ///
+    /// Delegar continua sendo ato da mesa, 2/3. O que sai da mesa e' o ato
+    /// REPETIDO de aprovar cada cotista — `D-F2-34`.
+    pub fn set_whitelist_operator(ctx: Context<SetWhitelistOperator>, novo: Pubkey) -> Result<()> {
+        instructions::set_whitelist_operator::handle_set_whitelist_operator(ctx, novo)
+    }
+
     pub fn update_whitelist(
         ctx: Context<UpdateWhitelist>,
         owner: Pubkey,

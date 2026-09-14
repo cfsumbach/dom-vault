@@ -1652,6 +1652,95 @@
       ]
     },
     {
+      "name": "set_whitelist_operator",
+      "docs": [
+        "O terceiro argumento entrou no Upgrade G (`D-F2-30`): piso de aporte",
+        "so' desta carteira, `0` = usa o do cofre.",
+        "Nomeia (ou destitui, com `Pubkey::default()`) o porteiro da whitelist.",
+        "",
+        "Delegar continua sendo ato da mesa, 2/3. O que sai da mesa e' o ato",
+        "REPETIDO de aprovar cada cotista — `D-F2-34`."
+      ],
+      "discriminator": [
+        67,
+        255,
+        121,
+        191,
+        83,
+        214,
+        59,
+        120
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "authority",
+          "docs": [
+            "**Só a mesa.** Delegar é ato dela, e continua sendo 2/3."
+          ],
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "wl_operator",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  119,
+                  108,
+                  45,
+                  111,
+                  112,
+                  101,
+                  114,
+                  97,
+                  116,
+                  111,
+                  114
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "novo",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "solicitar_resgate_capital",
       "docs": [
         "**Solicitar resgate de capital.** Trava a fração de cotas no escrow e abre",
@@ -2039,10 +2128,6 @@
     },
     {
       "name": "update_whitelist",
-      "docs": [
-        "O terceiro argumento entrou no Upgrade G (`D-F2-30`): piso de aporte",
-        "so' desta carteira, `0` = usa o do cofre."
-      ],
       "discriminator": [
         94,
         198,
@@ -2061,10 +2146,10 @@
         },
         {
           "name": "authority",
-          "signer": true,
-          "relations": [
-            "vault"
-          ]
+          "docs": [
+            "A mesa **ou** o porteiro. Qual dos dois e' conferido no handler."
+          ],
+          "signer": true
         },
         {
           "name": "vault",
@@ -2078,6 +2163,32 @@
                   117,
                   108,
                   116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "wl_operator",
+          "docs": [
+            "O PDA e' conferido pelas seeds; o conteudo, no handler."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  119,
+                  108,
+                  45,
+                  111,
+                  112,
+                  101,
+                  114,
+                  97,
+                  116,
+                  111,
+                  114
                 ]
               }
             ]
@@ -2181,6 +2292,19 @@
         152,
         117,
         119
+      ]
+    },
+    {
+      "name": "WhitelistOperator",
+      "discriminator": [
+        59,
+        101,
+        222,
+        113,
+        10,
+        89,
+        82,
+        45
       ]
     }
   ],
@@ -2391,6 +2515,19 @@
         232,
         136,
         161
+      ]
+    },
+    {
+      "name": "PorteiroDaWhitelistTrocado",
+      "discriminator": [
+        239,
+        58,
+        101,
+        152,
+        244,
+        118,
+        102,
+        245
       ]
     },
     {
@@ -3534,6 +3671,22 @@
       }
     },
     {
+      "name": "PorteiroDaWhitelistTrocado",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "anterior",
+            "type": "pubkey"
+          },
+          {
+            "name": "novo",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
       "name": "ResgateEfetivado",
       "docs": [
         "Um resgate de capital pago.",
@@ -4042,9 +4195,9 @@
             "type": "u16"
           },
           {
-            "name": "perf_fee_bps_por_socio",
+            "name": "perf_fee_bps_total",
             "docs": [
-              "Taxa de performance de **cada** sócio, em pontos-base. 2.000 = 20%.",
+              "Taxa de performance **TOTAL** do ciclo, em pontos-base. 5.000 = 50%.",
               "",
               "A base é `P` — o lucro que voltou ao caixa pelo `deposit_especial` —, e",
               "a parcela dos cotistas é o que sobra: `P − 3 × parcela`. Por isso este",
@@ -4123,6 +4276,51 @@
           {
             "name": "nav",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "WhitelistOperator",
+      "docs": [
+        "Uma carteira habilitada. PDA `[WHITELIST_SEED, owner]`.",
+        "",
+        "A ausência da conta é rejeição, nunca omissão (D5). Por isso o hook não usa",
+        "`Option` nem trata \"conta vazia\" como neutra.",
+        "**O porteiro da whitelist — `D-F2-34`.** PDA unica `[WL_OPERATOR_SEED]`.",
+        "",
+        "Aprovar cotista era uma proposta 2/3 POR PESSOA. O gargalo nunca foi a",
+        "decisao — a mesa ja' decide na fila do painel —, era a assinatura de hardware",
+        "para executar uma decisao ja' tomada. Com uma lista de espera, isso vira o",
+        "que trava a captacao.",
+        "",
+        "⚠️ **O QUE ESTA CHAVE PODE, E O QUE ELA NAO PODE.**",
+        "",
+        "Pode: inscrever e desinscrever carteiras, e definir o piso proprio de cada",
+        "uma. Nao pode: mover um centavo, mudar parametro, pausar, emitir cota,",
+        "atualizar o programa. **Ela abre a porta do fundo, e so.**",
+        "",
+        "O que se perde e' real e vale dito: uma chave sozinha passa a poder deixar",
+        "entrar quem quiser, e a desinscrever quem ja' esta'. O que limita o estrago e'",
+        "que entrar no fundo exige APORTAR, e que a mesa nomeia e destitui o porteiro",
+        "por 2/3 — e cada ato dele fica na cadeia com a chave que assinou.",
+        "",
+        "**Conta a parte, e nao campo no `Vault`.** Campo custaria realocar o cofre em",
+        "mainnet, e `Account<Vault>` falharia em toda instrucao ate' a migracao rodar."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "operator",
+            "docs": [
+              "Quem aprova. Trocar e' ato da mesa."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }
@@ -4285,7 +4483,7 @@
       "value": "1000000"
     },
     {
-      "name": "PERF_FEE_BPS_POR_SOCIO",
+      "name": "PERF_FEE_BPS_TOTAL",
       "docs": [
         "Taxa de performance **por sócio**, em pontos-base do **lucro realizado do",
         "ciclo** (`P`). 2.000 bps = 20% para cada uma das três carteiras — ver D21.",
@@ -4297,10 +4495,20 @@
         "**voltou** para o caixa e entrou pelo `deposit_especial`. Não há como",
         "inventar `P`: ele é o valor transferido na própria instrução.",
         "",
-        "3 × 20% = 60% para os sócios, 40% para os cotistas via NAV."
+        "3 × 20% = 60% para os sócios, 40% para os cotistas via NAV.",
+        "A taxa de performance **TOTAL**, em pontos-base — `D-F2-35`.",
+        "",
+        "⚠️ ERA POR SOCIO, E VIROU TOTAL. A razao e' aritmetica: com o campo por",
+        "socio, o contrato cobrava `P x bps / 10000` tres vezes, e **50% exatos nao",
+        "existem** — `5000/3 = 1666,67`, e bps e' inteiro. 1666 dava 49,98% e 1667",
+        "daria 50,01%.",
+        "",
+        "Com o total no campo, a parcela dos cotistas e' `P - P x total / 10000`, que",
+        "fecha exato. A divisao entre os tres acontece DEPOIS, e a sobra do",
+        "truncamento vai para os cotistas."
       ],
       "type": "u16",
-      "value": "2000"
+      "value": "5000"
     },
     {
       "name": "RESERVE_BPS",

@@ -537,12 +537,36 @@ fn t91_min_deposit_e_campo_ajustavel() {
         "T91 contra-teste: aporte pequeno entrou"
     );
 
+    // -----------------------------------------------------------------------
     // E a mesa sobe de novo, que é a estratégia de produção.
+    //
+    // ⚠️ A CONFERÊNCIA PASSOU A SER COM CARTEIRA NOVA — `D-F2-33`.
+    //
+    // Este ensaio barrava `a`, e `a` já tinha aportado `UNIT` acima. A partir do
+    // momento em que o piso é DE ENTRADA, `a` é cotista e não é mais barrada —
+    // então o ensaio, como estava, provava o comportamento antigo.
+    //
+    // Não foi enfraquecido: passou a provar as DUAS metades, que é o que a regra
+    // de fato afirma. Se alguém reverter a mudança, a segunda falha; se alguém
+    // apagar o piso por engano, a primeira falha.
+    // -----------------------------------------------------------------------
     env.update_min_deposit(5_000 * UNIT);
+
+    let nova = env.carteira(5_000 * UNIT);
     assert_dom_error(
-        env.deposit_raw(&a, UNIT),
+        env.deposit_raw(&nova, UNIT),
         DomError::DepositBelowMinimum,
-        "T91 piso alto barra o pequeno",
+        "T91 piso alto barra quem ESTA ENTRANDO",
+    );
+
+    let antes = env.saldo_dom(&a);
+    assert_ok(
+        env.deposit_raw(&a, UNIT),
+        "T91 piso alto NAO barra quem ja' e' cotista",
+    );
+    assert!(
+        env.saldo_dom(&a) > antes,
+        "T91 e o reaporte emitiu cota de verdade"
     );
 }
 

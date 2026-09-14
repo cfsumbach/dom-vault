@@ -104,7 +104,10 @@ fn relata_faixa(titulo: &str, f: &Faixa) {
     println!("  ============================================================");
     println!("   {AMOSTRAS} carteiras distintas");
     println!("   consome ....... {} a {} CU", f.minimo, f.maximo);
-    println!("   variacao ...... {} CU  (moagem do bump da whitelist)", f.maximo - f.minimo);
+    println!(
+        "   variacao ...... {} CU  (moagem do bump da whitelist)",
+        f.maximo - f.minimo
+    );
     println!("   de ............ {TETO_PADRAO} CU  (padrao, sem ComputeBudget)");
     println!("   sobra (pior) .. {sobra} CU  ({pct}%)");
     println!("  ============================================================");

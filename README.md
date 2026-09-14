@@ -7,18 +7,18 @@ Existe para uma coisa so': **qualquer pessoa refazer o binario e conferir o
 `sha256` contra o que esta' na rede.**
 
 > ✅ **Este espelho reproduz o binario INSTALADO EM MAINNET.**
-> `9215d35797dc2c6f72542c64c9e9a2c553bf54bbf67f6e92277f8e48d7416ae5`
+> `a877184562c7d9967f226c560182e86d827394847367b424a6891cd5e1b597be`
 
 ## O que este espelho reproduz
 
 | | |
 |---|---|
 | programa | `2KRqqGA47Pg2ML7Q8WJyaVAmEL8DaRx1sKxqzpVyNnkg` |
-| `sha256` do `.so` | `9215d35797dc2c6f72542c64c9e9a2c553bf54bbf67f6e92277f8e48d7416ae5` |
-| tamanho | 665872 bytes |
-| instrucoes no IDL | 25 |
+| `sha256` do `.so` | `a877184562c7d9967f226c560182e86d827394847367b424a6891cd5e1b597be` |
+| tamanho | 691224 bytes |
+| instrucoes no IDL | 26 |
 | erros no IDL | 77 |
-| gerado em | 2026-09-12T21:48:13Z |
+| gerado em | 2026-09-14T21:43:56Z |
 
 ## Sobre o `idl/dom_vault.json` — leia antes de vendorizar
 
@@ -53,14 +53,37 @@ cargo build-sbf
 sha256sum target/deploy/dom_vault.so    # tem de dar o sha da tabela acima
 ```
 
-Contra a rede:
+### Contra a rede — e o tamanho NAO e' detalhe
 
 ```bash
 solana program dump 2KRqqGA47Pg2ML7Q8WJyaVAmEL8DaRx1sKxqzpVyNnkg rede.so --url mainnet-beta
+head -c 691224 rede.so | sha256sum       # 691224 = o tamanho da tabela acima
 ```
 
-A `programdata` pode ter zero-padding depois do fim do programa — compare o
-**prefixo** do tamanho do `.so`, e confira que a cauda e' toda zero.
+⚠️ **`sha256sum rede.so` direto NAO bate, e nao e' sinal de adulteracao.**
+
+A `programdata` e' maior que o programa e o resto vem zerado. O `dump` traz a
+conta inteira, entao o arquivo tem o binario mais o padding — e quanto mais a
+conta foi estendida, maior o padding.
+
+⚠️ **E "tirar os zeros do fim" TAMBEM nao bate.** O proprio binario termina em
+zeros, entao remover todos come alguns bytes do programa e muda o hash. Ja'
+custou uma conferencia em 14/09, com esta instrucao no lugar.
+
+**O unico caminho que fecha e' o tamanho exato**, que e' por isso que ele esta'
+na tabela acima e nao so' o `sha256`.
+
+### A toolchain que reproduz
+
+| | |
+|---|---|
+| rust | `rustc 1.89.0 (29483883e 2025-08-04)` — prendido em `rust-toolchain.toml` |
+| solana / agave | `solana-cli 3.1.10 (src:7bc9c805; feat:1620780344, client:Agave)` |
+| anchor | `anchor-cli 1.1.2` |
+
+O `cargo build-sbf` vem do `solana-cli`: e' ele quem traz o LLVM do SBF, e e' a
+versao dele que decide o resultado. **Versao diferente pode dar hash diferente
+com o mesmo fonte** — isso nao e' adulteracao, e' toolchain.
 
 ## O que NAO esta aqui
 

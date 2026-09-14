@@ -340,9 +340,10 @@ fn t53_precisao_preservada_na_cadeia() {
 /// pagamento nunca aparece e o teste passaria sem exercer o que promete.
 ///
 ///   supply 20.000 ao NAV 1,20 -> patrimônio 24.000
-///   P = 1.370 -> sócios 822 / cotistas 548
-///   NAV = (24.000 + 548) / 20.000 = 1,227400
-///   o cotista tem metade das cotas: 12.000 de principal + 274 de lucro
+///   P = 1.370 -> sócios 685 (228,333333 cada, e 1 lamport de sobra)
+///                cotistas 685,000001 — a sobra é deles (`D-F2-35`)
+///   NAV = (24.000 + 685,000001) / 20.000 = 1,234250
+///   o cotista tem metade das cotas: 12.000 de principal + 342,50 de lucro
 #[test]
 fn t53b_precisao_com_taxa_no_meio() {
     let mut env = Env::new();
@@ -354,7 +355,7 @@ fn t53b_precisao_com_taxa_no_meio() {
 
     env.publish_nav(1_200_000);
     env.deposit_especial(1_370 * UNIT);
-    assert_eq!(env.vault().nav, 1_227_400, "NAV pos-distribuicao, quebrado");
+    assert_eq!(env.vault().nav, 1_234_250, "NAV pos-distribuicao, quebrado");
 
     let nav = env.vault().nav;
     let cotas = env.saldo_dom(&cotista);
@@ -391,8 +392,8 @@ fn t53b_precisao_com_taxa_no_meio() {
         "uma efetivacao so: sem fatias, sem dust"
     );
     assert_eq!(
-        esperado, 12_274_000_000,
-        "10.000 cotas x 1,227400 — principal mais a fatia do cotista nos 40% de P"
+        esperado, 12_342_500_000,
+        "10.000 cotas x 1,234250 — principal mais a fatia do cotista nos 50% de P"
     );
     assert!(
         recebido > 1_227 * UNIT,

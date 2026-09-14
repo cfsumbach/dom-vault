@@ -96,8 +96,10 @@ fn os_onze_parametros_gravam_o_valor_votado() {
         (Parametro::NavBoundPct, 10, |v| v.nav_bound_pct as u64),
         (Parametro::CapPct, 40, |v| v.cap_pct as u64),
         (Parametro::ReserveBps, 1_500, |v| v.reserve_bps as u64),
-        (Parametro::PerfFeeBps, 1_000, |v| {
-            v.perf_fee_bps_por_socio as u64
+        // `D-F2-35`: 6.000 = 60% no total, dentro da faixa [50%, 75%] do binario.
+        // Era 1.000, que agora fica ABAIXO do piso — e o teste reprovava certo.
+        (Parametro::PerfFeeBps, 6_000, |v| {
+            v.perf_fee_bps_total as u64
         }),
     ];
 
@@ -181,7 +183,7 @@ fn numero_fora_da_faixa_e_recusado() {
         // E o teto que protege o cotista da propria mesa.
         (
             Parametro::PerfFeeBps,
-            (MAX_PERF_FEE_BPS_POR_SOCIO + 1) as u64,
+            (MAX_PERF_FEE_BPS_TOTAL + 1) as u64,
             "taxa de performance acima de 25% por socio",
         ),
     ];
@@ -202,24 +204,32 @@ fn numero_fora_da_faixa_e_recusado() {
 /// recebe, e a parcela do cotista é o resto (`P − 3 × parcela`) — sem teto, uma
 /// proposta 2/3 levaria o resto a zero sem que nenhum cotista votasse.
 #[test]
-fn teto_da_taxa_de_performance_e_25_por_socio_75_no_total() {
+fn a_taxa_tem_piso_de_50_e_teto_de_75_no_binario() {
+    assert_eq!(MAX_PERF_FEE_BPS_TOTAL, 7_500, "75% no total");
     assert_eq!(
-        MAX_PERF_FEE_BPS_POR_SOCIO as u64 * NUM_SOCIOS as u64,
-        7_500,
-        "75% no total — a mesa fechou em 2026-09-08"
+        MIN_PERF_FEE_BPS_TOTAL, 5_000,
+        "50% no total — o piso publicado"
     );
 
     let mut env = Env::new();
     // No teto exato, passa.
-    env.ajustar_parametro(Parametro::PerfFeeBps, MAX_PERF_FEE_BPS_POR_SOCIO as u64)
+    env.ajustar_parametro(Parametro::PerfFeeBps, MAX_PERF_FEE_BPS_TOTAL as u64)
         .unwrap();
-    assert_eq!(
-        env.vault().perf_fee_bps_por_socio,
-        MAX_PERF_FEE_BPS_POR_SOCIO
-    );
-    // Um ponto-base acima, nao.
+    assert_eq!(env.vault().perf_fee_bps_total, MAX_PERF_FEE_BPS_TOTAL);
+    // No piso exato, passa.
+    env.ajustar_parametro(Parametro::PerfFeeBps, MIN_PERF_FEE_BPS_TOTAL as u64)
+        .unwrap();
+    assert_eq!(env.vault().perf_fee_bps_total, MIN_PERF_FEE_BPS_TOTAL);
+    // ⚠️ Um ponto-base ABAIXO do piso, nao — e este e' o lado novo. A mesa
+    // publicou "50% do lucro realizado"; o binario passa a ser quem promete.
     assert_dom_error(
-        env.ajustar_parametro(Parametro::PerfFeeBps, MAX_PERF_FEE_BPS_POR_SOCIO as u64 + 1),
+        env.ajustar_parametro(Parametro::PerfFeeBps, MIN_PERF_FEE_BPS_TOTAL as u64 - 1),
+        DomError::ParametroForaDoLimite,
+        "um bps abaixo do piso",
+    );
+    // Um ponto-base acima do teto, nao.
+    assert_dom_error(
+        env.ajustar_parametro(Parametro::PerfFeeBps, MAX_PERF_FEE_BPS_TOTAL as u64 + 1),
         DomError::ParametroForaDoLimite,
         "um bps acima do teto",
     );

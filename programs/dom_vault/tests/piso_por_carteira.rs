@@ -21,7 +21,7 @@ fn t_sem_excecao_vale_o_piso_do_cofre() {
     let c = env.carteira(1_000 * UNIT);
 
     assert_dom_error(
-        env.deposit_raw(&c, 1 * UNIT),
+        env.deposit_raw(&c, UNIT),
         DomError::DepositBelowMinimum,
         "1 USDC sem excecao",
     );
@@ -35,12 +35,12 @@ fn t_com_excecao_aporta_abaixo_do_piso() {
     let mut env = Env::new();
     let c = env.carteira(1_000 * UNIT);
     assert_ok(
-        env.update_whitelist_com_piso(&c.wallet.pubkey(), true, 1 * UNIT),
+        env.update_whitelist_com_piso(&c.wallet.pubkey(), true, UNIT),
         "piso proprio de 1 USDC",
     );
 
-    env.deposit(&c, 1 * UNIT);
-    assert_eq!(env.saldo_dom(&c), 1 * UNIT, "a cota nasceu com 1 USDC");
+    env.deposit(&c, UNIT);
+    assert_eq!(env.saldo_dom(&c), UNIT, "a cota nasceu com 1 USDC");
 }
 
 /// A exceção é **desta** carteira. A do lado continua no piso do cofre.
@@ -50,13 +50,13 @@ fn t_a_excecao_nao_vaza_para_a_carteira_ao_lado() {
     let privilegiada = env.carteira(1_000 * UNIT);
     let comum = env.carteira(1_000 * UNIT);
     assert_ok(
-        env.update_whitelist_com_piso(&privilegiada.wallet.pubkey(), true, 1 * UNIT),
+        env.update_whitelist_com_piso(&privilegiada.wallet.pubkey(), true, UNIT),
         "piso proprio",
     );
 
-    env.deposit(&privilegiada, 1 * UNIT);
+    env.deposit(&privilegiada, UNIT);
     assert_dom_error(
-        env.deposit_raw(&comum, 1 * UNIT),
+        env.deposit_raw(&comum, UNIT),
         DomError::DepositBelowMinimum,
         "a carteira ao lado NAO herda a excecao",
     );
@@ -68,19 +68,41 @@ fn t_a_excecao_se_desfaz() {
     let mut env = Env::new();
     let c = env.carteira(1_000 * UNIT);
     assert_ok(
-        env.update_whitelist_com_piso(&c.wallet.pubkey(), true, 1 * UNIT),
+        env.update_whitelist_com_piso(&c.wallet.pubkey(), true, UNIT),
         "liga a excecao",
     );
-    env.deposit(&c, 1 * UNIT);
+    env.deposit(&c, UNIT);
 
     assert_ok(
         env.update_whitelist_com_piso(&c.wallet.pubkey(), true, 0),
         "desliga a excecao",
     );
+
+    // -----------------------------------------------------------------------
+    // ⚠️ A CONFERENCIA E' COM CARTEIRA NOVA — `D-F2-33`.
+    //
+    // `c` ja' aportou acima, entao ela e' cotista e o piso nao se aplica mais a
+    // ela: o piso e' DE ENTRADA. Conferir nela provaria o comportamento antigo.
+    //
+    // O que este ensaio afirma continua sendo o mesmo: desligar a excecao
+    // devolve a carteira ao piso do cofre. So' que isso se mede em quem esta'
+    // ENTRANDO — e a outra metade, que `c` passa a nao ser barrada, e' afirmada
+    // logo abaixo para que reverter qualquer um dos dois lados quebre aqui.
+    // -----------------------------------------------------------------------
+    let nova = env.carteira(1_000 * UNIT);
+    assert_ok(
+        env.update_whitelist_com_piso(&nova.wallet.pubkey(), true, 0),
+        "a nova entra sem excecao",
+    );
     assert_dom_error(
-        env.deposit_raw(&c, 1 * UNIT),
+        env.deposit_raw(&nova, UNIT),
         DomError::DepositBelowMinimum,
-        "voltou ao piso do cofre",
+        "sem excecao, quem ENTRA volta ao piso do cofre",
+    );
+
+    assert_ok(
+        env.deposit_raw(&c, UNIT),
+        "e quem ja' e' cotista reaporta sem piso, com ou sem excecao",
     );
 }
 
@@ -109,9 +131,17 @@ fn t_layout_antigo_continua_valendo_e_significa_sem_excecao() {
     env.deposit(&c, 100 * UNIT);
     assert_eq!(env.saldo_dom(&c), 100 * UNIT, "a entrada velha vale");
 
+    // -----------------------------------------------------------------------
     // E o campo ausente lê como "sem exceção", não como "piso zero".
+    //
+    // ⚠️ Medido em carteira NOVA com entrada antiga — `c` ja' aportou acima e o
+    // piso e' DE ENTRADA (`D-F2-33`). O que se afirma aqui e' sobre o LAYOUT, e
+    // o layout so' se observa em quem ainda nao entrou.
+    // -----------------------------------------------------------------------
+    let nova = env.carteira(1_000 * UNIT);
+    env.plantar_whitelist_antiga(&nova.wallet.pubkey(), true);
     assert_dom_error(
-        env.deposit_raw(&c, 1 * UNIT),
+        env.deposit_raw(&nova, UNIT),
         DomError::DepositBelowMinimum,
         "campo ausente NAO libera aporte de 1 USDC",
     );
@@ -125,11 +155,11 @@ fn t_a_entrada_velha_cresce_quando_tocada() {
     env.plantar_whitelist_antiga(&c.wallet.pubkey(), true);
 
     assert_ok(
-        env.update_whitelist_com_piso(&c.wallet.pubkey(), true, 1 * UNIT),
+        env.update_whitelist_com_piso(&c.wallet.pubkey(), true, UNIT),
         "a mesa toca a entrada antiga",
     );
-    env.deposit(&c, 1 * UNIT);
-    assert_eq!(env.saldo_dom(&c), 1 * UNIT, "cresceu e guardou a excecao");
+    env.deposit(&c, UNIT);
+    assert_eq!(env.saldo_dom(&c), UNIT, "cresceu e guardou a excecao");
 }
 
 // ===========================================================================
@@ -147,9 +177,17 @@ fn t_bonus_a_mesa_paga_o_membro_recebe() {
         env.deposit_para_raw(&mesa, &membro, 100 * UNIT),
         "bonus de 100 USDC",
     );
-    assert_eq!(env.saldo_dom(&membro), 100 * UNIT, "a cota foi para o membro");
+    assert_eq!(
+        env.saldo_dom(&membro),
+        100 * UNIT,
+        "a cota foi para o membro"
+    );
     assert_eq!(env.saldo_dom(&mesa), 0, "quem pagou NAO recebe cota");
-    assert_eq!(env.saldo_usdc(&mesa), 900 * UNIT, "o USDC saiu de quem pagou");
+    assert_eq!(
+        env.saldo_usdc(&mesa),
+        900 * UNIT,
+        "o USDC saiu de quem pagou"
+    );
 }
 
 /// **A trava do cabeçalho.** `mint_to` não dispara o hook — sem esta
@@ -189,15 +227,15 @@ fn t_bonus_usa_o_piso_do_beneficiario() {
     let mesa = env.carteira(1_000 * UNIT);
     let membro = env.carteira(0);
     assert_ok(
-        env.update_whitelist_com_piso(&membro.wallet.pubkey(), true, 1 * UNIT),
+        env.update_whitelist_com_piso(&membro.wallet.pubkey(), true, UNIT),
         "excecao no BENEFICIARIO",
     );
 
     assert_ok(
-        env.deposit_para_raw(&mesa, &membro, 1 * UNIT),
+        env.deposit_para_raw(&mesa, &membro, UNIT),
         "1 USDC passa pelo piso do beneficiario",
     );
-    assert_eq!(env.saldo_dom(&membro), 1 * UNIT);
+    assert_eq!(env.saldo_dom(&membro), UNIT);
 }
 
 // ===========================================================================

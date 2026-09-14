@@ -102,8 +102,21 @@ pub fn handle_deposit_para(ctx: Context<DepositPara>, usdc_amount: u64) -> Resul
     require_whitelisted(&ctx.accounts.aportador_whitelist, &aportador)?;
     let piso_proprio = require_whitelisted(&ctx.accounts.beneficiario_whitelist, &beneficiario)?;
 
+    // -----------------------------------------------------------------------
     // O piso é o DO BENEFICIÁRIO — quem entra é ele (`D-F2-30`).
-    let piso = if piso_proprio > 0 {
+    //
+    // D-F2-33 — e se ele JÁ entrou, não entra de novo. Mesma regra do `deposit`,
+    // e pela mesma razão: o piso dimensiona posição NOVA. O saldo é lido ANTES
+    // do `mint_to`; depois dele, todo aporte seria de cotista.
+    //
+    // ⚠️ Aqui a leitura é do BENEFICIÁRIO, nunca do aportador. Quem recebe cota
+    // é ele, e é o histórico dele que diz se a posição é nova. Ler o aportador
+    // deixaria a mesa — que é cotista — abrir posição nova para qualquer um sem
+    // piso nenhum, que é exatamente o contrário do que o piso existe para fazer.
+    // -----------------------------------------------------------------------
+    let piso = if ctx.accounts.beneficiario_dom.amount > 0 {
+        0
+    } else if piso_proprio > 0 {
         piso_proprio
     } else {
         ctx.accounts.vault.min_deposit
@@ -168,7 +181,8 @@ pub fn handle_deposit_para(ctx: Context<DepositPara>, usdc_amount: u64) -> Resul
         let balance = ctx.accounts.beneficiario_dom.amount as u128;
         let supply = ctx.accounts.dom_mint.supply as u128;
         require!(
-            balance.saturating_mul(100) <= supply.saturating_mul(ctx.accounts.vault.cap_pct as u128),
+            balance.saturating_mul(100)
+                <= supply.saturating_mul(ctx.accounts.vault.cap_pct as u128),
             DomError::CapExceeded
         );
     }

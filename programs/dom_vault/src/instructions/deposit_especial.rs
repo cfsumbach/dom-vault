@@ -192,27 +192,54 @@ pub fn handle_deposit_especial(ctx: Context<DepositEspecial>, lucro_realizado: u
     }
 
     // -----------------------------------------------------------------------
-    // A repartição, 60/40 (D21 + D-F2-09).
-    //
-    // Calcula-se a parte de **cada sócio** primeiro e a dos cotistas por
-    // diferença. Não é indiferente: `P × 2000 / 10000` trunca, e três truncadas
-    // somadas deixam sobra. Somando a sobra na parcela dos cotistas, o
-    // arredondamento fica a favor do fundo — mesma disciplina da D9.
+    // A repartição — `D-F2-35`. **A ORDEM INVERTEU, e é o que faz 50 ser 50.**
     // -----------------------------------------------------------------------
-    let parcela_por_socio = u64::try_from(
+    // Era: calcula a parte de CADA SÓCIO e multiplica por três. Com o campo por
+    // sócio, `5000/3 = 1666,67` não é inteiro — 1666 dava 49,98% e 1667 daria
+    // 50,01%. **Não existia valor que publicasse "50%" e cobrasse 50%.**
+    //
+    // Agora: calcula a parte DOS SÓCIOS de uma vez, a dos cotistas por
+    // diferença, e só então divide por três. `P × 5000 / 10000` é exato, e a
+    // parcela dos cotistas é o complemento exato.
+    //
+    // ⚠️ A SOBRA DA DIVISÃO POR TRÊS VAI PARA OS COTISTAS, e não para um sócio.
+    //
+    // São no máximo dois lamports por ciclo — e é justamente por ser pouco que
+    // precisa de regra: sobra sem dono declarado é o tipo de coisa que alguém
+    // "resolve" seis meses depois dando para quem estiver mais perto. Somada aos
+    // cotistas, o arredondamento fica a favor do fundo, como na D9.
+    // -----------------------------------------------------------------------
+    require!(
+        ctx.accounts.vault.perf_fee_bps_total >= MIN_PERF_FEE_BPS_TOTAL,
+        DomError::ParametroForaDoLimite
+    );
+
+    let parcela_socios = u64::try_from(
         (lucro_realizado as u128)
-            .checked_mul(ctx.accounts.vault.perf_fee_bps_por_socio as u128)
+            .checked_mul(ctx.accounts.vault.perf_fee_bps_total as u128)
             .ok_or(DomError::MathOverflow)?
             .checked_div(BPS_DEN)
             .ok_or(DomError::MathOverflow)?,
     )
     .map_err(|_| error!(DomError::MathOverflow))?;
 
-    let parcela_socios = parcela_por_socio
-        .checked_mul(NUM_SOCIOS as u64)
+    let parcela_por_socio = parcela_socios
+        .checked_div(NUM_SOCIOS as u64)
         .ok_or(DomError::MathOverflow)?;
+
+    // O que a divisão por três deixou para trás volta para os cotistas.
+    let sobra = parcela_socios
+        .checked_sub(
+            parcela_por_socio
+                .checked_mul(NUM_SOCIOS as u64)
+                .ok_or(DomError::MathOverflow)?,
+        )
+        .ok_or(DomError::MathOverflow)?;
+
     let parcela_cotistas = lucro_realizado
         .checked_sub(parcela_socios)
+        .ok_or(DomError::MathOverflow)?
+        .checked_add(sobra)
         .ok_or(DomError::MathOverflow)?;
 
     // -----------------------------------------------------------------------
@@ -328,7 +355,28 @@ pub fn handle_deposit_especial(ctx: Context<DepositEspecial>, lucro_realizado: u
     // Abre a janela. O teto é a parcela dos cotistas — nunca `supply × delta`,
     // que por truncamento pode ser um micro-USDC menor e deixaria o último a
     // sacar sem o dele.
-    vault.lucro_sacavel_restante = parcela_cotistas;
+    // -----------------------------------------------------------------------
+    // ⚠️ O BOLO É O QUE OS COTISTAS CONSEGUEM SACAR, e não a parcela deles.
+    // -----------------------------------------------------------------------
+    // O direito individual é `cotas × delta`, e `delta = nav_novo − nav` já
+    // passou por uma divisão truncada por `supply`. A soma de todos os direitos
+    // é `supply × delta`, que pode ser ALGUNS LAMPORTS MENOR que a
+    // `parcela_cotistas` que subiu o NAV.
+    //
+    // Gravar a parcela aqui deixava essa diferença **presa**: ninguém tem
+    // direito a ela, o bolo nunca chega a zero, e `lucro_sacavel_restante > 0` é
+    // o que mantém a JANELA ABERTA — que recusa aporte e transferência de cota.
+    // Dois lamports de truncamento fechariam o fundo até a distribuição
+    // seguinte.
+    //
+    // Descoberto pelo `D-F2-35`: com a repartição 60/40 as fixtures davam contas
+    // redondas e a diferença era sempre zero. O defeito era latente desde o
+    // início e nenhum ensaio o alcançava — só mudou o `P` e ele apareceu.
+    //
+    // A diferença fica na treasury, sem dono: o patrimônio passa a ser
+    // levemente MAIOR que `supply × nav`, que é a direção segura.
+    // -----------------------------------------------------------------------
+    vault.lucro_sacavel_restante = usdc_from_shares(supply, delta_lucro_por_cota)?;
     vault.ultima_distribuicao_ts = now;
 
     emit!(LucroDistribuido {

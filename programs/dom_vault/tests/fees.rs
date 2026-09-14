@@ -18,7 +18,7 @@ mod common;
 use {
     common::*,
     dom_vault::{
-        constants::{DISTRIBUICAO_INTERVAL, PERF_FEE_BPS_POR_SOCIO},
+        constants::{DISTRIBUICAO_INTERVAL, NUM_SOCIOS, PERF_FEE_BPS_TOTAL},
         error::DomError,
         events::LucroDistribuido,
     },
@@ -35,11 +35,13 @@ const LUCRO: u64 = 200 * UNIT;
 // T38 — a distribuição
 // ---------------------------------------------------------------------------
 
-/// `P` = 200 USDC sobre 1.000 cotas ao NAV 1,000000:
-/// - por sócio = 200 x 20% = 40 USDC; aos sócios = 120
-/// - aos cotistas = 80 -> NAV = (1.000 + 80) / 1.000 = 1,080000
-/// - delta por cota = 0,080000
-/// - cotas por sócio = 40 / 1,08 = 37,037037
+/// `P` = 200 USDC sobre 1.000 cotas ao NAV 1,000000, com a taxa de gênese —
+/// **`D-F2-35`: 50% no TOTAL, e não 20% por sócio.**
+///
+/// - aos sócios = 200 x 50% = 100 USDC; por sócio = 100 / 3 = 33,333333
+/// - a sobra da divisão por três (1 lamport) vai para os cotistas
+/// - aos cotistas = 100 -> NAV = (1.000 + 100) / 1.000 = 1,100000
+/// - delta por cota = 0,100000
 #[test]
 fn t38_deposit_especial_minta_fee_share_nas_tres_carteiras() {
     let mut env = Env::new();
@@ -50,12 +52,13 @@ fn t38_deposit_especial_minta_fee_share_nas_tres_carteiras() {
     assert!(tem_evento::<LucroDistribuido>(&meta));
 
     let vault = env.vault();
-    assert_eq!(vault.nav, 1_080_000, "NAV pos-distribuicao");
-    assert_eq!(vault.delta_lucro_por_cota, 80_000, "delta congelado");
+    assert_eq!(vault.nav, 1_100_000, "NAV pos-distribuicao");
+    assert_eq!(vault.delta_lucro_por_cota, 100_000, "delta congelado");
     assert_eq!(
         vault.lucro_sacavel_restante,
-        80 * UNIT,
-        "bolo dos cotistas = 40% de P"
+        100 * UNIT,
+        "o bolo e' `supply x delta` — o que os cotistas conseguem sacar. A sobra \
+         da divisao por tres subiu o patrimonio e nao tem dono (D-F2-35)"
     );
     assert!(vault.ultima_distribuicao_ts > 0, "carimbo da distribuicao");
 
@@ -66,12 +69,15 @@ fn t38_deposit_especial_minta_fee_share_nas_tres_carteiras() {
         "o lucro realizado entrou na treasury na mesma transacao"
     );
 
-    let esperado = 37_037_037;
+    // 33,333333 USDC por sócio ao NAV JÁ SUBIDO de 1,100000 = 30,303030 cotas.
+    // As cotas saem ao NAV pós-distribuição, senão a emissão criaria cota de
+    // graça e abriria um buraco do tamanho da parcela dos sócios.
+    let esperado = 30_303_030;
     for socio in env.socios.iter() {
         assert_eq!(
             saldo(&env.svm, &socio.dom),
             esperado,
-            "cada socio recebe a mesma coisa — 20/20/20"
+            "cada socio recebe a mesma coisa — a divisao por tres e exata entre eles"
         );
         assert_eq!(
             env.ledger(&socio.wallet.pubkey()).shares,
@@ -165,10 +171,11 @@ fn t41_a_base_e_o_p_do_ciclo_nao_a_subida_do_nav() {
     let por_socio_2 = env.ledger(&env.socios[0].wallet.pubkey()).shares - ledger_antes;
     let valor_2 = por_socio_2 as u128 * nav_2 as u128 / UNIT as u128;
 
-    let esperado = (LUCRO as u128 * PERF_FEE_BPS_POR_SOCIO as u128) / 10_000;
+    // `D-F2-35`: o campo e' o TOTAL, e a divisao por tres vem depois.
+    let esperado = (LUCRO as u128 * PERF_FEE_BPS_TOTAL as u128) / 10_000 / NUM_SOCIOS as u128;
     assert!(
         valor_1.abs_diff(esperado) <= 1 && valor_2.abs_diff(esperado) <= 1,
-        "cada distribuicao paga 20% de P ao socio, em USDC: {valor_1} e {valor_2} contra {esperado}"
+        "cada distribuicao paga a fatia do socio, em USDC: {valor_1} e {valor_2} contra {esperado}"
     );
     assert!(
         por_socio_2 < por_socio_1,

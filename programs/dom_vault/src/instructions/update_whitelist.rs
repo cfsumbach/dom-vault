@@ -11,13 +11,21 @@ const TAMANHO_ANTIGO: usize = 42;
 pub struct UpdateWhitelist<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
+    /// A mesa **ou** o porteiro. Qual dos dois e' conferido no handler.
     pub authority: Signer<'info>,
-    #[account(
-        seeds = [VAULT_SEED],
-        bump = vault.bump,
-        has_one = authority @ DomError::Unauthorized,
-    )]
+    // -------------------------------------------------------------------------
+    // ⚠️ O `has_one = authority` SAIU DAQUI, e foi para o handler — `D-F2-34`.
+    // -------------------------------------------------------------------------
+    // Ele so' sabe comparar com UM campo, e agora sao dois caminhos: a
+    // autoridade da mesa, ou o porteiro nomeado por ela. A conferencia desceu
+    // para o handler, onde cabe o "ou" — e onde a recusa diz QUAL dos dois
+    // faltou, em vez de um `Unauthorized` mudo.
+    #[account(seeds = [VAULT_SEED], bump = vault.bump)]
     pub vault: Account<'info, Vault>,
+    /// CHECK: conta do porteiro. Opcional — quando ausente, so' a mesa aprova.
+    /// O PDA e' conferido pelas seeds; o conteudo, no handler.
+    #[account(seeds = [WL_OPERATOR_SEED], bump)]
+    pub wl_operator: UncheckedAccount<'info>,
     // -------------------------------------------------------------------------
     // ⚠️ `UncheckedAccount`, e a razao e' o Upgrade G.
     // -------------------------------------------------------------------------
@@ -43,6 +51,62 @@ pub fn handle_update_whitelist(
     active: bool,
     min_deposit_proprio: u64,
 ) -> Result<()> {
+    // -------------------------------------------------------------------------
+    // QUEM ASSINOU: a mesa, ou o porteiro — `D-F2-34`.
+    // -------------------------------------------------------------------------
+    // A conta do porteiro pode nem existir: e' assim que o cofre nasce, e e'
+    // assim que ele fica se a mesa nunca nomear ninguem. Conta vazia NAO e'
+    // porteiro nulo que autoriza todo mundo — e' porteiro AUSENTE, e ai' so' a
+    // mesa aprova, que era o comportamento ate' aqui.
+    //
+    // ⚠️ A ordem importa: a mesa e' conferida PRIMEIRO. Se um dia a conta do
+    // porteiro for corrompida ou ficar ilegivel, a mesa continua entrando —
+    // perder a whitelist por causa da conta da delegacao seria trocar um
+    // gargalo por uma tranca.
+    // -------------------------------------------------------------------------
+    let quem = ctx.accounts.authority.key();
+    let pela_mesa = quem == ctx.accounts.vault.authority;
+
+    let pelo_porteiro = if pela_mesa {
+        false
+    } else {
+        let conta = ctx.accounts.wl_operator.to_account_info();
+        let dados = conta.try_borrow_data()?;
+        conta.owner == &crate::ID
+            && dados.len() >= 8 + 32
+            && dados[..8] == *WhitelistOperator::DISCRIMINATOR
+            && Pubkey::try_from(&dados[8..40]).map(|k| k == quem).unwrap_or(false)
+            // `Pubkey::default()` e' "desligado", nunca um assinante valido.
+            && quem != Pubkey::default()
+    };
+
+    require!(pela_mesa || pelo_porteiro, DomError::Unauthorized);
+
+    // -------------------------------------------------------------------------
+    // ⚠️ O PORTEIRO INSCREVE. DESINSCREVER CONTINUA SENDO 2/3.
+    // -------------------------------------------------------------------------
+    // A assimetria nao e' zelo: e' o unico jeito de a delegacao nao ser pior do
+    // que o gargalo que ela resolve.
+    //
+    // Desinscrever TRANCA O DINHEIRO DE OUTRO. Quem sai da whitelist nao
+    // transfere cota (o hook barra as duas pontas) e nao pede resgate de capital
+    // (`resgate_capital.rs` exige whitelist em `solicitar`). O capital fica
+    // imobilizado ate' a mesa readmitir — **por 2/3, que e' exatamente o quorum
+    // que a chave do porteiro contorna**.
+    //
+    // Inscrever tem o limite natural de exigir que a pessoa APORTE dinheiro de
+    // verdade para virar cotista. Desinscrever nao tem limite nenhum, e e'
+    // unilateral. Sao riscos de ordens diferentes, e so' um deles vale delegar.
+    //
+    // E a EXCECAO DE PISO tambem fica com a mesa: conceder piso menor e' decisao
+    // de politica sobre dinheiro, nao operacao de porta. O porteiro inscreve no
+    // piso do cofre, que e' `0` neste campo — "sem excecao".
+    // -------------------------------------------------------------------------
+    if pelo_porteiro {
+        require!(active, DomError::Unauthorized);
+        require!(min_deposit_proprio == 0, DomError::Unauthorized);
+    }
+
     let info = ctx.accounts.entry.to_account_info();
     let alvo = 8 + WhitelistEntry::INIT_SPACE;
     let bump = ctx.bumps.entry;

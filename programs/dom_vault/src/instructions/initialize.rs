@@ -188,7 +188,7 @@ pub fn handle_initialize(
     vault.distribuicao_interval = DISTRIBUICAO_INTERVAL;
     vault.nav_bound_pct = NAV_BOUND_NUM as u16;
     vault.cap_pct = CAP_NUM as u16;
-    vault.perf_fee_bps_por_socio = PERF_FEE_BPS_POR_SOCIO;
+    vault.perf_fee_bps_total = PERF_FEE_BPS_TOTAL;
     vault.layout_version = LAYOUT_VERSION;
     // Allowlist **vazia** na gênese: `deploy_capital` não tem para onde mandar
     // antes de a mesa registrar destino por proposta. Capital novo nasce preso.

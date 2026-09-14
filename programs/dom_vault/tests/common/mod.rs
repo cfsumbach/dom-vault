@@ -98,6 +98,11 @@ pub fn queue_pda() -> Pubkey {
 }
 
 /// PDA de um pedido de resgate de capital.
+/// A PDA unica do porteiro da whitelist — `D-F2-34`.
+pub fn wl_operator_pda() -> Pubkey {
+    Pubkey::find_program_address(&[dom_vault::constants::WL_OPERATOR_SEED], &dom_vault::ID).0
+}
+
 pub fn pedido_resgate_pda(id: u64) -> Pubkey {
     Pubkey::find_program_address(&[RESGATE_SEED, &id.to_le_bytes()], &dom_vault::ID).0
 }
@@ -682,6 +687,29 @@ impl Env {
                 authority: signer.pubkey(),
                 vault: vault_pda(),
                 entry: whitelist_pda(wallet),
+                wl_operator: wl_operator_pda(),
+                system_program: anchor_lang::system_program::ID,
+            }
+            .to_account_metas(None),
+        );
+        let signer = signer.insecure_clone();
+        send(&mut self.svm, &self.payer, &[ix], &[&signer])
+    }
+
+    /// Nomeia o porteiro da whitelist. `Pubkey::default()` destitui — `D-F2-34`.
+    pub fn set_whitelist_operator_raw(
+        &mut self,
+        signer: &Keypair,
+        novo: Pubkey,
+    ) -> TransactionResult {
+        let ix = Instruction::new_with_bytes(
+            dom_vault::ID,
+            &dom_vault::instruction::SetWhitelistOperator { novo }.data(),
+            dom_vault::accounts::SetWhitelistOperator {
+                payer: self.payer.pubkey(),
+                authority: signer.pubkey(),
+                vault: vault_pda(),
+                wl_operator: wl_operator_pda(),
                 system_program: anchor_lang::system_program::ID,
             }
             .to_account_metas(None),
@@ -698,6 +726,18 @@ impl Env {
         piso: u64,
     ) -> TransactionResult {
         let authority = self.authority.insecure_clone();
+        self.update_whitelist_com_piso_por(&authority, wallet, active, piso)
+    }
+
+    /// A mesma, com o assinante escolhido — para provar o que o PORTEIRO nao faz.
+    pub fn update_whitelist_com_piso_por(
+        &mut self,
+        authority: &Keypair,
+        wallet: &Pubkey,
+        active: bool,
+        piso: u64,
+    ) -> TransactionResult {
+        let authority = authority.insecure_clone();
         let ix = Instruction::new_with_bytes(
             dom_vault::ID,
             &dom_vault::instruction::UpdateWhitelist {
@@ -711,6 +751,7 @@ impl Env {
                 authority: authority.pubkey(),
                 vault: vault_pda(),
                 entry: whitelist_pda(wallet),
+                wl_operator: wl_operator_pda(),
                 system_program: anchor_lang::system_program::ID,
             }
             .to_account_metas(None),
