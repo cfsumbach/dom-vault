@@ -88,11 +88,14 @@ fn t36_publish_nav_com_timestamp_regressivo_rejeita() {
     );
     assert_eq!(env.vault().nav, 1_100_000, "NAV nao mudou");
 
-    // Contra-teste: um segundo à frente passa — depois do intervalo mínimo, que
-    // é outra trava e tem teste próprio logo abaixo.
+    // Contra-teste: timestamp à frente passa — depois do intervalo mínimo, que
+    // é outra trava e tem teste próprio logo abaixo. Carimbado com o relógio
+    // corrente, não com `t + 1`: uma hora atrás do relógio é justamente o
+    // retroativo que `MAX_NAV_TIMESTAMP_LAG` recusa (teste logo abaixo).
     env.avancar_sem_oraculo(dom_vault::constants::MIN_NAV_PUBLISH_INTERVAL);
+    let depois = env.agora();
     assert_ok(
-        env.publish_nav_raw(&oracle, 1_200_000, t + 1),
+        env.publish_nav_raw(&oracle, 1_200_000, depois),
         "T36 contra-teste: timestamp posterior",
     );
     assert_eq!(env.vault().nav, 1_200_000);
@@ -149,6 +152,75 @@ fn intervalo_minimo_transforma_o_bound_em_limite_de_taxa() {
         "a hora exata passa",
     );
     assert_eq!(env.vault().nav, 1_150_000);
+}
+
+/// **O intervalo compara `now` com o timestamp INFORMADO — e por isso precisa
+/// de teto no atraso.**
+///
+/// `nav_ts` é o que o publicador escreveu, não o instante em que a publicação
+/// entrou no bloco. Sem teto, uma lacuna de duas horas deixava o oráculo
+/// publicar `nav_ts + 1`, `nav_ts + 2`, … em segundos: cada uma passa no
+/// intervalo (`now − nav_ts` segue ≥ 1h), na monotonicidade e no teto de
+/// futuro. Cinco passos de 15% em cinco segundos — o bound voltava a valer
+/// cinco segundos.
+///
+/// O teste prova as três partes: o retroativo é recusado, o atraso honesto
+/// (até `MAX_NAV_TIMESTAMP_LAG`) passa, e depois dele o intervalo volta a valer
+/// em tempo real — a próxima só entra `intervalo − lag` depois.
+#[test]
+fn oraculo_nao_contorna_o_intervalo_com_timestamp_retroativo() {
+    use dom_vault::constants::{MAX_NAV_TIMESTAMP_LAG, MIN_NAV_PUBLISH_INTERVAL};
+
+    let mut env = Env::sem_nav_publicado();
+    let oracle = env.oracle.insecure_clone();
+
+    let t0 = env.agora();
+    assert_ok(env.publish_nav_raw(&oracle, NAV_GENESIS, t0), "primeira");
+
+    // Duas horas sem publicação — o cron atrasou.
+    env.avancar_sem_oraculo(2 * MIN_NAV_PUBLISH_INTERVAL);
+
+    // O contorno: um segundo à frente do anterior, duas horas atrás do relógio.
+    // Passa no intervalo, na monotonicidade e no teto de futuro — só o teto de
+    // atraso barra.
+    assert_dom_error(
+        env.publish_nav_raw(&oracle, 1_150_000, t0 + 1),
+        DomError::NavTimestampMuitoAntigo,
+        "timestamp retroativo dentro da lacuna",
+    );
+    assert_eq!(env.vault().nav, NAV_GENESIS, "o NAV nao se mexeu");
+
+    // Um segundo além do atraso tolerado: ainda não.
+    let agora = env.agora();
+    assert_dom_error(
+        env.publish_nav_raw(&oracle, 1_150_000, agora - MAX_NAV_TIMESTAMP_LAG - 1),
+        DomError::NavTimestampMuitoAntigo,
+        "um segundo alem do atraso tolerado",
+    );
+
+    // No limite do atraso tolerado: passa — inclusivo, como os outros.
+    assert_ok(
+        env.publish_nav_raw(&oracle, 1_150_000, agora - MAX_NAV_TIMESTAMP_LAG),
+        "no limite do atraso tolerado",
+    );
+    assert_eq!(env.vault().nav, 1_150_000);
+
+    // E o intervalo volta a valer em tempo real. `nav_ts` ficou `lag` atrás do
+    // relógio, então a próxima só entra `intervalo − lag` depois — nunca antes.
+    env.avancar_sem_oraculo(MIN_NAV_PUBLISH_INTERVAL - MAX_NAV_TIMESTAMP_LAG - 1);
+    let t = env.agora();
+    assert_dom_error(
+        env.publish_nav_raw(&oracle, 1_300_000, t),
+        DomError::NavPublicacaoMuitoCedo,
+        "um segundo antes de intervalo menos atraso",
+    );
+    env.avancar_sem_oraculo(1);
+    let t = env.agora();
+    assert_ok(
+        env.publish_nav_raw(&oracle, 1_300_000, t),
+        "intervalo menos atraso: passa",
+    );
+    assert_eq!(env.vault().nav, 1_300_000);
 }
 
 /// **A válvula da mesa NÃO tem intervalo mínimo, e é de propósito.**

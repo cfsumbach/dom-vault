@@ -2994,6 +2994,11 @@
       "code": 6076,
       "name": "NadaACorrigir",
       "msg": "Nada a corrigir: o campo ja' esta' zerado"
+    },
+    {
+      "code": 6077,
+      "name": "NavTimestampMuitoAntigo",
+      "msg": "Timestamp de NAV do oraculo atrasado demais em relacao ao relogio da rede"
     }
   ],
   "types": [
@@ -4428,6 +4433,38 @@
       ],
       "type": "bytes",
       "value": "[108, 117, 99, 114, 111]"
+    },
+    {
+      "name": "MAX_NAV_TIMESTAMP_LAG",
+      "docs": [
+        "**Atraso máximo do `timestamp` do ORÁCULO em relação ao relógio da rede.",
+        "Cinco minutos — e nunca mais que metade do intervalo vigente.**",
+        "",
+        "É o que faz o intervalo acima valer em tempo real. A espera compara `now`",
+        "com `vault.nav_ts`, e `nav_ts` é o timestamp que o **próprio publicador**",
+        "informou na publicação anterior — não o instante em que ela entrou no bloco.",
+        "Sem teto no atraso, bastava uma lacuna maior que o intervalo (cron atrasado,",
+        "oráculo horas sem publicar) para publicar `nav_ts + 1`, `nav_ts + 2`,",
+        "`nav_ts + 3`…: cada uma passa no intervalo, porque `now − nav_ts` continua",
+        "maior que uma hora, e todas passam na monotonicidade e no teto de futuro.",
+        "Cinco passos de 15% em cinco segundos — o bound voltava a valer cinco",
+        "segundos, que é exatamente o que o intervalo existe para impedir.",
+        "",
+        "Com o teto, `nav_ts` nunca fica mais que `lag` atrás de `now`, e duas",
+        "publicações do oráculo passam a distar pelo menos `intervalo − lag` em tempo",
+        "real. Como `lag ≤ intervalo / 2`, isso é pelo menos metade do intervalo",
+        "votado, qualquer que ele seja.",
+        "",
+        "Cinco minutos cobre a folga honesta: o backend monta a transação com o",
+        "relógio dele e ela leva segundos para confirmar. Vale só para o oráculo. A",
+        "válvula da mesa (2/3) já publica qualquer valor sem intervalo, e o timestamp",
+        "dela só decide quando o próprio NAV vence.",
+        "",
+        "Constante, e não campo: é limite de segurança, como os `*_VOTAVEL` acima —",
+        "votável, seria removível pelo mesmo voto que ela protege."
+      ],
+      "type": "i64",
+      "value": "300"
     },
     {
       "name": "MIN_DEPOSIT",
