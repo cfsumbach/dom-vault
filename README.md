@@ -6,13 +6,8 @@ repositorio de trabalho, a cada upgrade. Pull request aqui nao alcanca o program
 Existe para uma coisa so': **qualquer pessoa refazer o binario e conferir o
 `sha256` contra o que esta' na rede.**
 
-> ⚠️ **Este espelho NAO e' o binario instalado.** Ele reproduz uma
-> versao construida e ainda nao publicada.
->
-> instalado em mainnet ... `a877184562c7d9967f226c560182e86d827394847367b424a6891cd5e1b597be`
-> este espelho .......... `1038f54bde8a416f08790bafceda6b835444161c96096a877e084b7446c3e9ff`
->
-> Conferir contra a rede hoje vai dar diferenca, e a diferenca e' esta.
+> ✅ **Este espelho reproduz o binario INSTALADO EM MAINNET.**
+> `1038f54bde8a416f08790bafceda6b835444161c96096a877e084b7446c3e9ff`
 
 
 ## Upgrade I — crédito
@@ -35,7 +30,7 @@ chega por aqui.
 | tamanho | 693392 bytes |
 | instrucoes no IDL | 26 |
 | erros no IDL | 78 |
-| gerado em | 2026-09-16T14:59:42Z |
+| gerado em | 2026-09-16T15:04:27Z |
 
 ## Sobre o `idl/dom_vault.json` — leia antes de vendorizar
 
