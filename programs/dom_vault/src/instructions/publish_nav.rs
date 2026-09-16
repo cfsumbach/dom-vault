@@ -99,6 +99,28 @@ pub fn handle_publish_nav(
                 DomError::NavPublicacaoMuitoCedo
             );
         }
+
+        // -------------------------------------------------------------------
+        // O timestamp do oráculo acompanha o relógio da rede — e é esta trava
+        // que faz o intervalo acima valer.
+        //
+        // O intervalo compara `now` com `nav_ts`, e `nav_ts` é o timestamp que
+        // o publicador informou, não o instante da publicação. Sem teto no
+        // atraso, uma lacuna de duas horas deixava publicar `nav_ts + 1`,
+        // `nav_ts + 2`, … em segundos: cada uma passa no intervalo (`now − nav_ts`
+        // segue ≥ 1h), na monotonicidade e no teto de futuro. Cinco passos de
+        // 15% em cinco segundos — o cenário exato que o intervalo fecha.
+        //
+        // O teto é `MAX_NAV_TIMESTAMP_LAG`, ou metade do intervalo vigente se
+        // ele for menor: assim duas publicações do oráculo distam pelo menos
+        // `intervalo − lag ≥ intervalo / 2` em tempo real, qualquer que seja o
+        // intervalo votado. Inclusivo, como os outros limites do cofre.
+        // -------------------------------------------------------------------
+        let lag_max = MAX_NAV_TIMESTAMP_LAG.min(vault.min_nav_publish_interval / 2);
+        require!(
+            now.saturating_sub(timestamp) <= lag_max,
+            DomError::NavTimestampMuitoAntigo
+        );
     }
     // A válvula só "abriu" quando a mesa publicou algo que o oráculo não
     // conseguiria. Proposta dentro do limite é publicação comum.

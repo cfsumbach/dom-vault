@@ -187,4 +187,8 @@ pub enum DomError {
     SupplyNaoZerado,
     #[msg("Nada a corrigir: o campo ja' esta' zerado")]
     NadaACorrigir,
+    // Correcao do intervalo do oraculo. No fim do enum, pela mesma razao das
+    // variantes acima: codigo de erro e' contrato publico.
+    #[msg("Timestamp de NAV do oraculo atrasado demais em relacao ao relogio da rede")]
+    NavTimestampMuitoAntigo,
 }
