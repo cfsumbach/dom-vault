@@ -1,9 +1,12 @@
-//! **A janela de saque de lucro** (D-F2-09).
+//! **A janela de saque de lucro** (D-F2-09, refeita pelo Upgrade J — D-F2-43).
 //!
-//! A distribuição sobe o NAV pro-rata, então o lucro de cada cotista é
-//! exatamente `cotas × delta`. É por isso que o saque não precisa saber quanto
-//! nem quando cada um aportou: um número global resolve a conta para a carteira
-//! inteira, e a soma sobre quem estava dentro dá a parcela dos cotistas.
+//! O fechamento não sobe o NAV: o `P` já estava no preço da cota desde que
+//! caiu na gaveta. O que o fechamento congela é o índice do ciclo e o
+//! `nav_fechamento`; o direito de cada cotista é o ganho DELE pelo índice,
+//! menos a taxa da mesa — quem entrou no meio do ciclo leva só o `P` que caiu
+//! depois dele. Nesta fixture há um cotista só, desde o começo, então o número
+//! coincide com o da régua antiga (500 = metade de 1.000): o que muda é de
+//! onde ele vem (`tests/indice_j.rs` prova a diferença com 18 carteiras).
 //!
 //! O que não é de graça são as três travas. Cada uma tem teste próprio aqui,
 //! com o contra-teste ao lado — porque as três existem contra ataques que
@@ -20,34 +23,36 @@ use {
     solana_signer::Signer,
 };
 
-// Upgrade D: o piso do saque de lucro passou a ser 200 USDC. Com o par antigo
-// (1.000 / 200) o bolo do ciclo era 80 USDC e NENHUM saque passava — a fixture
-// inteira caia na trava nova.
-//
-// Escalados os DOIS por 5, e nao so' o `P`: a razao `parcela_cotistas / cotas`
-// fica identica, entao NAV e delta nao mudam com a escala. So' os valores em
-// USDC sobem junto, que e' o que a trava mede.
-//
-// `D-F2-35` mudou a REPARTICAO, e ai' sim NAV e delta mudaram: de 1,080000 e
-// 0,080000 para 1,100000 e 0,100000, porque os cotistas passaram de 40% para
-// 50% de P.
+// Upgrade D: o piso do saque de lucro passou a ser 200 USDC — o par (5.000 /
+// 1.000) existe para o bolo (500) passar do piso.
 const APORTE: u64 = 5_000 * UNIT;
-/// `P` do ciclo. 50% = 500 aos sócios (166,666666 cada, e 2 lamports de sobra),
-/// e 500,000002 ao bolo dos cotistas — a sobra é deles (`D-F2-35`).
+/// `P` do ciclo. 50% = 500 aos sócios (166,666666 cada) e 500 ao bolo dos
+/// cotistas (a sobra de 2 micro é deles, `D-F2-35`).
 const LUCRO: u64 = 1_000 * UNIT;
 
-/// Cofre com um cotista de 5.000 cotas e uma distribuição de 1.000 já feita.
-/// NAV 1,100000, delta 0,100000, bolo de 500 USDC.
+/// Cofre com um cotista de 5.000 cotas e um `P` de 1.000 fechado.
 ///
-/// O bolo é `supply × delta`, e não a parcela dos cotistas: os 2 lamports de
-/// sobra subiram o patrimônio e não têm dono que os saque. Ver `D-F2-35`.
+/// Antes do fechamento o oráculo publica o piso com o `P` dentro:
+/// (5.000 + 1.000) ÷ 5.000 = 1,200000. O fechamento cunha a mesa (500 USDC em
+/// cotas) e grava `nav_fechamento` = 1,2 − 500 ÷ 5.000 = 1,100000 — o preço
+/// pós-diluição, que é o que a janela usa. O NAV publicado NÃO muda.
 fn cofre_com_janela_aberta() -> (Env, Holder) {
     let mut env = Env::new();
     let cotista = env.cotista(APORTE);
+    env.publish_nav_pela_mesa(1_200_000);
     env.deposit_especial(LUCRO);
-    assert_eq!(env.vault().nav, 1_100_000);
-    assert_eq!(env.vault().delta_lucro_por_cota, 100_000);
-    assert_eq!(env.vault().lucro_sacavel_restante, 500 * UNIT);
+    assert_eq!(
+        env.vault().nav,
+        1_200_000,
+        "§4: o fechamento nao mexe no NAV publicado"
+    );
+    assert_eq!(env.vault().nav_fechamento, 1_100_000);
+    assert_eq!(
+        env.vault().delta_lucro_por_cota,
+        0,
+        "a regua por cota morreu no J"
+    );
+    assert_eq!(env.vault().lucro_sacavel_restante, 500 * UNIT + 2);
     (env, cotista)
 }
 
@@ -61,15 +66,15 @@ fn cofre_com_janela_aberta() -> (Env, Holder) {
 /// **antes** da distribuição. Não é aproximação: é a álgebra de queimar
 /// `valor / nav` cotas.
 ///
-///   5.000 cotas x 0,10 = 500 USDC sacados
-///   queima 500 / 1,10 = 454,545454 cotas
+///   ganho pelo indice: 5.000 cotas × 0,2 = 1.000; metade e' dele = 500 USDC
+///   queima 500 / 1,10 (nav_fechamento) = 454,545454 cotas
 ///   sobram 4.545,454546 cotas x 1,10 = 5.000,000000 USDC — o aporte original
 #[test]
 fn saque_devolve_o_cotista_a_posicao_pre_distribuicao() {
     let (mut env, cotista) = cofre_com_janela_aberta();
 
     let usdc_antes = env.saldo_usdc(&cotista);
-    let nav = env.vault().nav;
+    let nav = env.vault().nav_fechamento;
 
     env.sacar_lucro(&cotista);
 
@@ -83,14 +88,22 @@ fn saque_devolve_o_cotista_a_posicao_pre_distribuicao() {
         APORTE - 454_545_454,
         "cota queimada"
     );
-    assert_eq!(env.vault().nav, nav, "queimar ao NAV nao mexe no NAV");
+    assert_eq!(
+        env.vault().nav,
+        1_200_000,
+        "queimar nao mexe no NAV publicado"
+    );
 
     let posicao = env.saldo_dom(&cotista) as u128 * nav as u128 / UNIT as u128;
     assert_eq!(
         posicao, APORTE as u128,
         "de volta a posicao pre-distribuicao, exata"
     );
-    assert_eq!(env.vault().lucro_sacavel_restante, 0, "bolo esvaziado");
+    assert_eq!(
+        env.vault().lucro_sacavel_restante,
+        2,
+        "bolo esvaziado — sobra a sobra de arredondamento"
+    );
 }
 
 /// A soma do que todos podem sacar **não passa** do bolo. É a segunda cinta:
@@ -102,7 +115,9 @@ fn a_soma_dos_saques_nao_passa_do_bolo() {
     let b = env.cotista(400 * UNIT);
     // `P` proprio, maior que o da fixture: com um bolo pequeno o `b` bateria no
     // piso do Upgrade D. O que este teste afirma e' o TETO global, nao o piso —
-    // entao o piso nao pode ser o que o derruba.
+    // entao o piso nao pode ser o que o derruba. Piso publicado com o P dentro:
+    // (1.000 + 2.000) ÷ 1.000 = 3,0.
+    env.publish_nav_pela_mesa(3_000_000);
     env.deposit_especial(2_000 * UNIT);
 
     let bolo = env.vault().lucro_sacavel_restante;
@@ -113,8 +128,13 @@ fn a_soma_dos_saques_nao_passa_do_bolo() {
     env.sacar_lucro(&b);
 
     let sacado = (env.saldo_usdc(&a) - ua) + (env.saldo_usdc(&b) - ub);
-    assert_eq!(sacado, bolo, "a soma dos saques fecha no bolo, na unidade");
-    assert_eq!(env.vault().lucro_sacavel_restante, 0);
+    // a: 600 × 2,0 = 1.200 de ganho → 600; b: 400 × 2,0 → 400. Soma 1.000 = o bolo (com a sobra de 1 micro).
+    assert_eq!(
+        sacado + 1,
+        bolo,
+        "a soma dos saques fecha no bolo, na unidade"
+    );
+    assert_eq!(env.vault().lucro_sacavel_restante, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -139,11 +159,13 @@ fn segundo_saque_na_mesma_janela_e_recusado() {
         "a marca guarda o carimbo da distribuicao"
     );
 
+    // No J o bolo guarda a sobra de arredondamento (2 micro), entao a janela
+    // segue "aberta" e quem recusa e' a marca — nao o teto.
     let cotas_antes = env.saldo_dom(&cotista);
     assert_dom_error(
         env.sacar_lucro_raw(&cotista),
-        DomError::JanelaDeLucroFechada,
-        "segundo saque com o bolo ja' vazio",
+        DomError::LucroJaSacado,
+        "segundo saque na mesma janela",
     );
     assert_eq!(env.saldo_dom(&cotista), cotas_antes, "nada mais queimado");
 }
@@ -156,6 +178,7 @@ fn marca_recusa_mesmo_com_bolo_sobrando() {
     let mut env = Env::new();
     let a = env.cotista(600 * UNIT);
     let _b = env.cotista(400 * UNIT);
+    env.publish_nav_pela_mesa(2_000_000);
     env.deposit_especial(LUCRO);
 
     env.sacar_lucro(&a);
@@ -178,6 +201,8 @@ fn a_marca_libera_na_distribuicao_seguinte() {
     env.sacar_lucro(&cotista);
 
     env.avancar(DISTRIBUICAO_INTERVAL);
+    // o piso com o P novo dentro: (5.500 + 1.000) ÷ 5.000 = 1,30
+    env.publish_nav_pela_mesa(1_300_000);
     env.deposit_especial(LUCRO);
 
     let usdc_antes = env.saldo_usdc(&cotista);
@@ -228,8 +253,11 @@ fn transferencia_de_cota_e_recusada_com_a_janela_aberta() {
     );
     assert_eq!(saldo(&env.svm, &destino_dom), 0, "nada chegou");
 
-    // Contra-teste: fechada a janela, a mesma transferência passa.
+    // Contra-teste: fechada a janela, a mesma transferência passa — depois do
+    // acerto da origem (J7: toda saida acerta antes; aqui o liquido e' zero,
+    // cotista sozinho, mas o hook so' anda o odometro de quem esta' em dia).
     env.fechar_janela_de_lucro();
+    env.acertar(&cotista);
     env.transfer(&cotista, &destino_dom, &destino_dono, 100 * UNIT)
         .expect("fora da janela a transferencia e' normal");
     assert_eq!(saldo(&env.svm, &destino_dom), 100 * UNIT);
@@ -248,6 +276,7 @@ fn resgate_de_capital_atravessa_a_janela() {
     // tem de vir antes.
     let mut env = Env::new();
     let cotista = env.cotista(10_000 * UNIT);
+    env.publish_nav_pela_mesa(1_100_000);
     env.deposit_especial(LUCRO);
     assert!(env.vault().lucro_sacavel_restante > 0, "janela aberta");
     let direito_antes = env.saldo_dom(&cotista);
@@ -355,15 +384,17 @@ fn distribuicao_seguinte_fecha_a_janela_esquecida() {
     let (mut env, cotista) = cofre_com_janela_aberta();
 
     env.avancar(DISTRIBUICAO_INTERVAL);
+    // ninguem sacou: o caixa tem 6.000 e o P novo 1.000 sobre 5.454,545454 cotas
+    env.publish_nav_pela_mesa(1_283_333);
     env.deposit_especial(LUCRO);
 
-    // 499,996363 e nao 500: na segunda distribuicao o `supply` ja' cresceu com
-    // as cotas dos socios da primeira, entao `delta = parcela / supply` trunca
-    // um pouco mais. O que este ensaio afirma e' que o bolo e' NOVO — nao a soma
-    // com o da janela anterior, que seria 1.000.
+    // O bolo e' NOVO — nao a soma com o da janela anterior, que seria 1.000.
+    // No J o bolo e' a parcela dos cotistas inteira (500 + a sobra), e o que
+    // cada um pode sacar sai do indice — os socios, que agora tem cota, nao
+    // entram na janela (`SocioForaDaJanela`), entao a parte do P deles fica.
     assert_eq!(
         env.vault().lucro_sacavel_restante,
-        499_996_363,
+        500 * UNIT + 2,
         "bolo NOVO, nao o acumulado"
     );
 

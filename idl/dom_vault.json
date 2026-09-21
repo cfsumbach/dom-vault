@@ -14,6 +14,173 @@
   ],
   "instructions": [
     {
+      "name": "abrir_posicao",
+      "docs": [
+        "Upgrade J: cria a posicao de uma carteira da whitelist que ainda nao aportou."
+      ],
+      "discriminator": [
+        172,
+        97,
+        130,
+        34,
+        111,
+        133,
+        86,
+        247
+      ],
+      "accounts": [
+        {
+          "name": "pagador",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "owner"
+        },
+        {
+          "name": "owner_whitelist"
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "posicao",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  99,
+                  97,
+                  111
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "owner_dom",
+          "docs": [
+            "A ATA de cota do dono, quando existe (carteira da era I com cota, na",
+            "migração). Sem ela — carteira nova, sem cota — passa o programa como",
+            "conta nula. Com cota, a entrada nasce em `indice_ciclo` (ver o handler)."
+          ],
+          "optional": true
+        },
+        {
+          "name": "dom_token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "acertar",
+      "docs": [
+        "Upgrade J7: acerta a taxa de uma carteira pelo indice (credito sem privilegio; debito com o dono)."
+      ],
+      "discriminator": [
+        56,
+        30,
+        137,
+        42,
+        219,
+        75,
+        232,
+        177
+      ],
+      "accounts": [
+        {
+          "name": "owner"
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "posicao",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  99,
+                  97,
+                  111
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "owner"
+              }
+            ]
+          }
+        },
+        {
+          "name": "dom_mint",
+          "writable": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "owner_dom",
+          "writable": true
+        },
+        {
+          "name": "dom_token_program",
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "ajustar_parametro",
       "docs": [
         "Ajusta o depósito mínimo em vigor. **Privilegiada** — 12ª caneta.",
@@ -75,6 +242,97 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "atualizar_extra_account_meta_list",
+      "docs": [
+        "Upgrade J: a lista de contas extras do hook ganha a posicao do destino. TEMPORARIA."
+      ],
+      "discriminator": [
+        197,
+        206,
+        41,
+        93,
+        39,
+        210,
+        96,
+        198
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint"
+        },
+        {
+          "name": "extra_account_meta_list",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  120,
+                  116,
+                  114,
+                  97,
+                  45,
+                  97,
+                  99,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  45,
+                  109,
+                  101,
+                  116,
+                  97,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     },
     {
       "name": "carimbar_nav",
@@ -245,10 +503,12 @@
       "accounts": [
         {
           "name": "depositor",
+          "writable": true,
           "signer": true
         },
         {
           "name": "vault",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -266,6 +526,44 @@
         },
         {
           "name": "depositor_whitelist"
+        },
+        {
+          "name": "gaveta",
+          "docs": [
+            "Upgrade J: a gaveta (ATA de USDC do vault 1). Lida ANTES de cunhar, para",
+            "que o P que ja' chegou nao seja dividido com quem entra agora."
+          ]
+        },
+        {
+          "name": "posicao",
+          "docs": [
+            "Upgrade J: a posicao desta carteira no indice de P."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  99,
+                  97,
+                  111
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "depositor"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
           "name": "dom_mint",
@@ -345,11 +643,16 @@
           "signer": true
         },
         {
-          "name": "authority",
-          "signer": true,
-          "relations": [
-            "vault"
-          ]
+          "name": "gaveta_owner",
+          "docs": [
+            "**A dona da gaveta** — em mainnet o vault 1 do Squads (`2nFNfsWi…`),",
+            "assinando dentro da proposta 2/3 (`vaultIndex 1`). O privilégio vem de a",
+            "mesa ter apontado a gaveta por `set_gaveta_usdc` (vault 0, 2/3): quem",
+            "pode mover o P é quem fecha o ciclo, e o P sai da gaveta para o caixa",
+            "por CPI aqui dentro — nenhuma conta intermediária, nenhuma proposta a",
+            "mais. (D-F2-43 §6b.2, item 4 revertido em 21/09: gaveta com chave.)"
+          ],
+          "signer": true
         },
         {
           "name": "vault",
@@ -383,11 +686,11 @@
           ]
         },
         {
-          "name": "origem_usdc",
+          "name": "gaveta",
           "docs": [
-            "Conta de USDC de onde sai o `P`. Pertence à **autoridade** — o Vault PDA",
-            "do Squads —, então quem assina a saída é o mesmo quórum que assina a",
-            "distribuição."
+            "A gaveta: a conta de USDC que a mesa apontou (`vault.gaveta_usdc`), cuja",
+            "dona assina esta instrução. O P vem DIRETO dela — nunca passou por outra",
+            "conta; nunca saiu do preço (J2)."
           ],
           "writable": true
         },
@@ -507,6 +810,16 @@
         {
           "name": "lucro_realizado",
           "type": "u64"
+        },
+        {
+          "name": "afiliados",
+          "type": {
+            "vec": {
+              "defined": {
+                "name": "AfiliadoDoFechamento"
+              }
+            }
+          }
         }
       ]
     },
@@ -534,6 +847,7 @@
           "docs": [
             "Quem PAGA o USDC. Assina, e não recebe cota nenhuma."
           ],
+          "writable": true,
           "signer": true
         },
         {
@@ -550,6 +864,7 @@
         },
         {
           "name": "vault",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -564,6 +879,43 @@
               }
             ]
           }
+        },
+        {
+          "name": "gaveta",
+          "docs": [
+            "Upgrade J: a gaveta, lida antes de cunhar (ver `deposit.rs`)."
+          ]
+        },
+        {
+          "name": "posicao",
+          "docs": [
+            "Upgrade J: a posicao do BENEFICIARIO no indice — e' ele quem recebe o lote."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  99,
+                  97,
+                  111
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "beneficiario"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         },
         {
           "name": "dom_mint",
@@ -889,6 +1241,23 @@
         },
         {
           "name": "destination_whitelist"
+        },
+        {
+          "name": "destination_posicao",
+          "docs": [
+            "`[POSICAO_SEED, destination.owner]`, resolvida pela lista de contas",
+            "extras. Lida e regravada a mao no handler: destino isento (escrow) chega",
+            "como conta vazia e nao e' tocado; destino cotista sem posicao e' erro",
+            "nomeado (`abrir_posicao` antes de receber)."
+          ],
+          "writable": true
+        },
+        {
+          "name": "source_posicao",
+          "docs": [
+            "zero, e ai' os odometros andam aqui — por isso gravavel)."
+          ],
+          "writable": true
         }
       ],
       "args": [
@@ -1210,6 +1579,61 @@
       "args": []
     },
     {
+      "name": "migrar_vault_indice",
+      "docs": [
+        "Upgrade J (D-F2-43): migra o cofre 603 → 731 bytes; a gaveta nasce vazia e",
+        "o `set_gaveta_usdc` a aponta na mesma proposta.",
+        "TEMPORARIA — sai no upgrade seguinte, como a do E saiu no F."
+      ],
+      "discriminator": [
+        125,
+        85,
+        241,
+        124,
+        36,
+        250,
+        103,
+        39
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "antigo e `Account<Vault>` desserializaria antes das constraints."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "pagador",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "pause",
       "discriminator": [
         211,
@@ -1292,6 +1716,28 @@
               }
             ]
           }
+        },
+        {
+          "name": "gaveta",
+          "docs": [
+            "Upgrade J: a gaveta. A publicacao absorve o P novo no indice e recalcula",
+            "o piso — o oraculo passa a carregar a conta, e so' ela."
+          ]
+        },
+        {
+          "name": "treasury",
+          "docs": [
+            "Upgrade J: o caixa do cofre, para o piso = (campo + caixa + gaveta) ÷ supply."
+          ],
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "dom_mint",
+          "docs": [
+            "Upgrade J: o supply, para o indice e o piso."
+          ]
         }
       ],
       "args": [
@@ -1337,6 +1783,7 @@
         },
         {
           "name": "vault",
+          "writable": true,
           "pda": {
             "seeds": [
               {
@@ -1369,6 +1816,34 @@
                   97,
                   114,
                   101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "socio"
+              }
+            ]
+          }
+        },
+        {
+          "name": "posicao",
+          "docs": [
+            "Upgrade J (J7): toda saída acerta antes — o sócio assina, então o",
+            "débito (se segurou cota o ciclo inteiro) queima aqui mesmo."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  99,
+                  97,
+                  111
                 ]
               },
               {
@@ -1558,6 +2033,34 @@
           }
         },
         {
+          "name": "posicao",
+          "docs": [
+            "Upgrade J (J5/J7): a posição do cotista no índice — o direito da janela",
+            "sai dela, e o acerto da taxa roda antes (o cotista assina: o débito passa)."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  99,
+                  97,
+                  111
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "cotista"
+              }
+            ]
+          }
+        },
+        {
           "name": "dom_mint",
           "writable": true,
           "relations": [
@@ -1595,6 +2098,59 @@
         {
           "name": "system_program",
           "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "set_gaveta_usdc",
+      "docs": [
+        "Upgrade J: a mesa aponta a gaveta do lucro (conta de USDC do vault 1).",
+        "**Privilegiada.** Só entre ciclos."
+      ],
+      "discriminator": [
+        156,
+        21,
+        238,
+        44,
+        35,
+        80,
+        47,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gaveta",
+          "docs": [
+            "A gaveta nova: conta de USDC de qualquer dona — a dona é quem vai",
+            "assinar o fechamento. Não pode ser a treasury (o P sairia do caixa",
+            "para o caixa e o índice contaria o cofre inteiro como lucro)."
+          ]
         }
       ],
       "args": []
@@ -1739,6 +2295,49 @@
           "type": "pubkey"
         }
       ]
+    },
+    {
+      "name": "sincronizar_gaveta",
+      "docs": [
+        "Upgrade J: absorve o P novo da gaveta no indice, sem privilegio."
+      ],
+      "discriminator": [
+        104,
+        226,
+        191,
+        115,
+        184,
+        188,
+        194,
+        225
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "gaveta"
+        },
+        {
+          "name": "dom_mint"
+        }
+      ],
+      "args": []
     },
     {
       "name": "solicitar_resgate_capital",
@@ -2282,6 +2881,19 @@
       ]
     },
     {
+      "name": "PosicaoDoCotista",
+      "discriminator": [
+        144,
+        171,
+        114,
+        201,
+        211,
+        29,
+        120,
+        74
+      ]
+    },
+    {
       "name": "Vault",
       "discriminator": [
         211,
@@ -2346,6 +2958,19 @@
         170,
         63,
         22
+      ]
+    },
+    {
+      "name": "ComissaoDeAfiliado",
+      "discriminator": [
+        43,
+        19,
+        234,
+        112,
+        33,
+        20,
+        189,
+        241
       ]
     },
     {
@@ -2999,9 +3624,80 @@
       "code": 6077,
       "name": "NavTimestampMuitoAntigo",
       "msg": "Timestamp de NAV do oraculo atrasado demais em relacao ao relogio da rede"
+    },
+    {
+      "code": 6078,
+      "name": "GavetaDiminuiu",
+      "msg": "A gaveta tem menos do que o contrato viu — nunca se desconta o indice"
+    },
+    {
+      "code": 6079,
+      "name": "PConservacaoFalhou",
+      "msg": "Conservacao falhou: p_ciclo nao bate com o saldo da gaveta"
+    },
+    {
+      "code": 6080,
+      "name": "GavetaErrada",
+      "msg": "A conta da gaveta nao e' a que o cofre conhece"
+    },
+    {
+      "code": 6081,
+      "name": "PosicaoDoCotistaAusente",
+      "msg": "A posicao do cotista no indice nao existe — carteira de antes do J sem migracao"
+    },
+    {
+      "code": 6082,
+      "name": "AcertoPendente",
+      "msg": "Acerto pendente: a carteira deve taxa e so' o dono pode queimar — chame `acertar` assinando"
+    },
+    {
+      "code": 6083,
+      "name": "PDiferenteDoEsperado",
+      "msg": "O P na gaveta nao e' o que a proposta esperava"
+    },
+    {
+      "code": 6084,
+      "name": "AfiliadoInvalido",
+      "msg": "Lista de afiliados invalida: bps fora de 1..=500, indicado == afiliado, ou contas que nao batem com a lista"
+    },
+    {
+      "code": 6085,
+      "name": "AfiliadoRepetido",
+      "msg": "Indicado repetido na lista de afiliados — uma comissao por indicado"
+    },
+    {
+      "code": 6086,
+      "name": "ContaDeCotaNaoEAta",
+      "msg": "A conta de cota nao e' a ATA do dono — no J toda cota vive na ATA (o acerto e' por carteira, nao por conta)"
     }
   ],
   "types": [
+    {
+      "name": "AfiliadoDoFechamento",
+      "docs": [
+        "Uma linha da lista de afiliados do fechamento (J1, D-F2-43 §1). Argumento",
+        "do `deposit_especial`, votado na proposta: `indicado` é o cotista, `afiliado`",
+        "quem o trouxe, `bps` a fatia **da parte da mesa** sobre o ganho do indicado",
+        "(500 = 5%). A comissão sai de dentro da mesa; o cotista não paga nada a mais."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "indicado",
+            "type": "pubkey"
+          },
+          {
+            "name": "afiliado",
+            "type": "pubkey"
+          },
+          {
+            "name": "bps",
+            "type": "u16"
+          }
+        ]
+      }
+    },
     {
       "name": "CapEnforcementEnabled",
       "docs": [
@@ -3076,6 +3772,55 @@
           },
           {
             "name": "deployed_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ComissaoDeAfiliado",
+      "docs": [
+        "J1: uma comissão de afiliado cunhada no fechamento. Um evento por linha da",
+        "lista — o arquivo de distribuição é gerado daqui."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "indicado",
+            "type": "pubkey"
+          },
+          {
+            "name": "afiliado",
+            "type": "pubkey"
+          },
+          {
+            "name": "bps",
+            "type": "u16"
+          },
+          {
+            "name": "ganho_indicado",
+            "docs": [
+              "O ganho do indicado no ciclo fechado, pelo índice (micro-USDC)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "comissao_usdc",
+            "docs": [
+              "`ganho_indicado × taxa_mesa × bps ÷ 1e8` (micro-USDC)."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "cotas",
+            "docs": [
+              "Cotas cunhadas ao afiliado (ao `nav_fechamento`, já com o acerto dele compensado)."
+            ],
             "type": "u64"
           },
           {
@@ -3299,6 +4044,13 @@
           },
           {
             "name": "cotas_por_socio",
+            "type": "u64"
+          },
+          {
+            "name": "comissoes_afiliados",
+            "docs": [
+              "J1: Σ comissões de afiliados, em USDC — saiu de dentro de `parcela_socios`."
+            ],
             "type": "u64"
           },
           {
@@ -3687,6 +4439,48 @@
           {
             "name": "novo",
             "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PosicaoDoCotista",
+      "docs": [
+        "A posição de uma carteira no índice de P. PDA `[POSICAO_SEED, owner]`.",
+        "",
+        "`indice_entrada` é a média ponderada pelas cotas dos índices em que cada",
+        "lote entrou (aporte, `deposit_para`, transferência recebida). Resgate não a",
+        "altera. Criada no primeiro aporte; carteira sem esta conta no fechamento é",
+        "carteira de antes do J — a migração cria as vinte de 21/09 com entrada 0."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "indice_entrada",
+            "type": "u128"
+          },
+          {
+            "name": "indice_diluicao_visto",
+            "docs": [
+              "J7 — o `indice_diluicao` do cofre no ultimo acerto desta carteira."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "indice_p_acertado",
+            "docs": [
+              "J7 — o `indice_ciclo` ate onde a taxa desta carteira ja' foi acertada."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }
@@ -4214,6 +5008,78 @@
             "type": "u16"
           },
           {
+            "name": "gaveta_usdc",
+            "docs": [
+              "A gaveta: conta de USDC cuja autoridade é o vault 1 do Squads. Gravada",
+              "na migração; muda por `set_gaveta_usdc` (autoridade, proposta 2/3)."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "indice_p",
+            "docs": [
+              "P acumulado por cota desde a gênese, escalado por `INDICE_SCALE`. Só sobe."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "indice_ciclo",
+            "docs": [
+              "`indice_p` no último fechamento — a entrada efetiva mínima do ciclo em curso."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "indice_ciclo_anterior",
+            "docs": [
+              "`indice_ciclo` do fechamento anterior — a janela de saque calcula sobre",
+              "`indice_ciclo − max(entrada, indice_ciclo_anterior)`."
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "gaveta_saldo_visto",
+            "docs": [
+              "Último saldo da gaveta que o contrato viu. Delta positivo vira índice;",
+              "delta negativo recusa a instrução (`GavetaDiminuiu`). Zera no fechamento."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "p_ciclo",
+            "docs": [
+              "Σ dos deltas positivos da gaveta no ciclo — a prova de conservação do",
+              "fechamento (`p_ciclo == saldo da gaveta`). Zera no fechamento."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "nav_piso",
+            "docs": [
+              "NAV líquido: (capital no campo + P na gaveta) ÷ supply. Só sobe dentro",
+              "do ciclo; `publish_nav` recusa bruto abaixo dele. Recalculado no fechamento."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "nav_fechamento",
+            "docs": [
+              "NAV gravado no fechamento — o preço da queima na janela de saque."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "indice_diluicao",
+            "docs": [
+              "J7 — quanto a mesa ja' cobrou POR COTA por diluicao, acumulado desde a",
+              "genese (micro-USDC por cota, escalado por INDICE_SCALE). Monotonico:",
+              "a cada fechamento `+= mesa × INDICE_SCALE ÷ supply_antes_da_cunhagem`.",
+              "O acerto de cada carteira compara o que ela pagou por diluicao com o",
+              "que devia pelo indice (ganho × taxa_mesa) e cunha/queima a diferenca."
+            ],
+            "type": "u128"
+          },
+          {
             "name": "layout_version",
             "docs": [
               "**Versão do layout desta conta. É, e continua sendo, o ÚLTIMO campo.**",
@@ -4417,7 +5283,7 @@
         "tamanho, e o que barra hoje são travas acidentais dependentes de dado."
       ],
       "type": "u16",
-      "value": "2"
+      "value": "3"
     },
     {
       "name": "LUCRO_SEED",
@@ -4433,6 +5299,14 @@
       ],
       "type": "bytes",
       "value": "[108, 117, 99, 114, 111]"
+    },
+    {
+      "name": "MAX_AFILIADO_BPS",
+      "docs": [
+        "Teto da comissao de afiliado, em bps DA PARTE DA MESA sobre o ganho do indicado (J1): 1–5% (D-F2-43 §1; mesa, 21/09)."
+      ],
+      "type": "u16",
+      "value": "500"
     },
     {
       "name": "MAX_NAV_TIMESTAMP_LAG",
@@ -4546,6 +5420,14 @@
       ],
       "type": "u16",
       "value": "5000"
+    },
+    {
+      "name": "POSICAO_SEED",
+      "docs": [
+        "PDA por carteira: `[POSICAO_SEED, owner]` — o índice de P em que entrou (Upgrade J)."
+      ],
+      "type": "bytes",
+      "value": "[112, 111, 115, 105, 99, 97, 111]"
     },
     {
       "name": "RESERVE_BPS",

@@ -39,6 +39,17 @@ pub struct ExecuteHook<'info> {
     pub source_whitelist: UncheckedAccount<'info>,
     /// CHECK: whitelist do destino. Idem.
     pub destination_whitelist: UncheckedAccount<'info>,
+    /// CHECK: Upgrade J — a posicao do destino no indice de P, PDA
+    /// `[POSICAO_SEED, destination.owner]`, resolvida pela lista de contas
+    /// extras. Lida e regravada a mao no handler: destino isento (escrow) chega
+    /// como conta vazia e nao e' tocado; destino cotista sem posicao e' erro
+    /// nomeado (`abrir_posicao` antes de receber).
+    #[account(mut)]
+    pub destination_posicao: UncheckedAccount<'info>,
+    /// CHECK: J7 — a posicao da origem: tem de estar acertada (ou com liquido
+    /// zero, e ai' os odometros andam aqui — por isso gravavel).
+    #[account(mut)]
+    pub source_posicao: UncheckedAccount<'info>,
 }
 
 pub fn handle_execute(ctx: Context<ExecuteHook>, _amount: u64) -> Result<()> {
@@ -141,6 +152,78 @@ pub fn handle_execute(ctx: Context<ExecuteHook>, _amount: u64) -> Result<()> {
                 <= supply.saturating_mul(ctx.accounts.vault.cap_pct as u128),
             DomError::CapExceeded
         );
+    }
+
+    // ---------------------------------------------------------------------
+    // Upgrade J (D-F2-43 §2): quem RECEBE cota entra no indice de agora, pela
+    // media ponderada — nao ganha P anterior a transferencia. Quem CEDE nao
+    // muda de entrada (como no resgate parcial). O hook nao carrega a gaveta:
+    // quem transfere chama `sincronizar_gaveta` na mesma transacao.
+    //
+    // D4: o Token-2022 ja' somou `amount` em `destination.amount` antes deste
+    // CPI — `cotas_antes` = saldo atual − amount.
+    // ---------------------------------------------------------------------
+    // J7: quem transfere tem de estar ACERTADO nos dois lados — o hook nao pode
+    // cunhar nem queimar (reentrancia no Token-2022), entao so' confere. Quem
+    // monta a transferencia chama `acertar` na origem e no destino antes. A
+    // carteira que nada deve e nada tem a receber (liquido zero: sem cota, ou
+    // sozinha no cofre) passa, e os odometros dela andam aqui.
+    //
+    // D4: o Token-2022 ja' moveu `amount` antes deste CPI — o saldo da origem
+    // ja' esta' sem o lote, o do destino ja' esta' com ele. O acerto de cada
+    // lado e' sobre o saldo de ANTES.
+    let carregar = |info: &AccountInfo, dono: &Pubkey| -> Result<PosicaoDoCotista> {
+        require!(
+            info.owner == &crate::ID && info.data_len() >= 8 + PosicaoDoCotista::INIT_SPACE,
+            DomError::PosicaoDoCotistaAusente
+        );
+        let data = info.try_borrow_data()?;
+        let p = PosicaoDoCotista::try_deserialize(&mut &data[..])?;
+        require_keys_eq!(p.owner, *dono, DomError::PosicaoDoCotistaAusente);
+        Ok(p)
+    };
+    let gravar = |info: &AccountInfo, p: &PosicaoDoCotista| -> Result<()> {
+        let mut data = info.try_borrow_mut_data()?;
+        p.try_serialize(&mut &mut data[..])
+    };
+    // J: cota so' vive na ATA do dono (ver `indice::exigir_ata`). O destino e'
+    // a porta de entrada — sem isto uma segunda conta nasceria com cota e
+    // escaparia do acerto. A origem tambem, por simetria (mainnet so' tem ATAs).
+    if !source_exempt {
+        crate::indice::exigir_ata(
+            &ctx.accounts.source.key(),
+            &source_owner,
+            &ctx.accounts.mint.key(),
+            &anchor_spl::token_2022::ID,
+        )?;
+    }
+    if !destination_exempt {
+        crate::indice::exigir_ata(
+            &ctx.accounts.destination.key(),
+            &destination_owner,
+            &ctx.accounts.mint.key(),
+            &anchor_spl::token_2022::ID,
+        )?;
+    }
+    if !source_exempt {
+        let info = ctx.accounts.source_posicao.to_account_info();
+        let mut posicao = carregar(&info, &source_owner)?;
+        let cotas_antes = ctx.accounts.source.amount.saturating_add(_amount);
+        crate::indice::exigir_acertada(cotas_antes, &mut posicao, vault)?;
+        gravar(&info, &posicao)?;
+    }
+    if !destination_exempt {
+        let info = ctx.accounts.destination_posicao.to_account_info();
+        let mut posicao = carregar(&info, &destination_owner)?;
+        let cotas_antes = ctx.accounts.destination.amount.saturating_sub(_amount);
+        crate::indice::exigir_acertada(cotas_antes, &mut posicao, vault)?;
+        posicao.indice_entrada = crate::indice::entrada_ponderada(
+            cotas_antes,
+            posicao.indice_entrada,
+            _amount,
+            vault.indice_p,
+        )?;
+        gravar(&info, &posicao)?;
     }
 
     Ok(())

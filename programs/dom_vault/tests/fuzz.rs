@@ -339,10 +339,11 @@ fn t53_precisao_preservada_na_cadeia() {
 /// pós-distribuição que não seja redondo, senão o truncamento das fatias de
 /// pagamento nunca aparece e o teste passaria sem exercer o que promete.
 ///
-///   supply 20.000 ao NAV 1,20 -> patrimônio 24.000
+///   supply 20.000 ao NAV 1,20 -> patrimônio 24.000, e o P de 1.370 na gaveta
+///   piso publicado = (24.000 + 1.370) / 20.000 = 1,268500 (Upgrade J)
 ///   P = 1.370 -> sócios 685 (228,333333 cada, e 1 lamport de sobra)
 ///                cotistas 685,000001 — a sobra é deles (`D-F2-35`)
-///   NAV = (24.000 + 685,000001) / 20.000 = 1,234250
+///   nav_fechamento = 1,268500 − 685 / 20.000 = 1,234250
 ///   o cotista tem metade das cotas: 12.000 de principal + 342,50 de lucro
 #[test]
 fn t53b_precisao_com_taxa_no_meio() {
@@ -353,9 +354,16 @@ fn t53b_precisao_com_taxa_no_meio() {
     let pagadora = env.caixa_da_autoridade(50_000 * UNIT);
     env.update_endereco_resgate(pagadora);
 
-    env.publish_nav(1_200_000);
+    env.p_na_gaveta(1_370 * UNIT);
+    env.publish_nav(1_268_500);
     env.deposit_especial(1_370 * UNIT);
-    assert_eq!(env.vault().nav, 1_234_250, "NAV pos-distribuicao, quebrado");
+    assert_eq!(
+        env.vault().nav_fechamento,
+        1_234_250,
+        "NAV pos-diluicao, quebrado"
+    );
+    // o oraculo publica o preco pos-diluicao na hora seguinte
+    env.publish_nav(1_234_250);
 
     let nav = env.vault().nav;
     let cotas = env.saldo_dom(&cotista);

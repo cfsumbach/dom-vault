@@ -1,6 +1,7 @@
 pub mod constants;
 pub mod error;
 pub mod events;
+pub mod indice;
 pub mod instructions;
 pub mod math;
 pub mod state;
@@ -180,6 +181,41 @@ pub mod dom_vault {
         instructions::resgate_capital::handle_update_endereco_resgate(ctx)
     }
 
+    /// Upgrade J7: acerta a taxa de uma carteira pelo indice (credito sem privilegio; debito com o dono).
+    pub fn acertar(ctx: Context<Acertar>) -> Result<()> {
+        instructions::acertar::handle_acertar(ctx)
+    }
+
+    /// Upgrade J: a mesa aponta a gaveta do lucro (conta de USDC do vault 1).
+    /// **Privilegiada.** Só entre ciclos.
+    pub fn set_gaveta_usdc(ctx: Context<SetGavetaUsdc>) -> Result<()> {
+        instructions::gaveta::handle_set_gaveta_usdc(ctx)
+    }
+
+    /// Upgrade J: absorve o P novo da gaveta no indice, sem privilegio.
+    pub fn sincronizar_gaveta(ctx: Context<SincronizarGaveta>) -> Result<()> {
+        instructions::gaveta::handle_sincronizar_gaveta(ctx)
+    }
+
+    /// Upgrade J: cria a posicao de uma carteira da whitelist que ainda nao aportou.
+    pub fn abrir_posicao(ctx: Context<AbrirPosicao>) -> Result<()> {
+        instructions::gaveta::handle_abrir_posicao(ctx)
+    }
+
+    /// Upgrade J: a lista de contas extras do hook ganha a posicao do destino. TEMPORARIA.
+    pub fn atualizar_extra_account_meta_list(
+        ctx: Context<AtualizarExtraAccountMetaList>,
+    ) -> Result<()> {
+        instructions::init_extra_account_metas::handle_atualizar_extra_account_meta_list(ctx)
+    }
+
+    /// Upgrade J (D-F2-43): migra o cofre 603 → 731 bytes; a gaveta nasce vazia e
+    /// o `set_gaveta_usdc` a aponta na mesma proposta.
+    /// TEMPORARIA — sai no upgrade seguinte, como a do E saiu no F.
+    pub fn migrar_vault_indice(ctx: Context<MigrarVaultIndice>) -> Result<()> {
+        instructions::migracao_j::handle_migrar_vault_indice(ctx)
+    }
+
     /// **Rotaciona a chave do oráculo de NAV. Privilegiada.**
     ///
     /// A revogação que não existia: sem ela, chave vazada só se resolvia com
@@ -208,8 +244,12 @@ pub mod dom_vault {
     /// "o que passou do high water mark" e passou a ser `P`, o valor
     /// transferido aqui: taxa só sobre lucro que virou caixa, nunca sobre
     /// marcação. Abre a janela de saque de lucro.
-    pub fn deposit_especial(ctx: Context<DepositEspecial>, lucro_realizado: u64) -> Result<()> {
-        instructions::deposit_especial::handle_deposit_especial(ctx, lucro_realizado)
+    pub fn deposit_especial<'info>(
+        ctx: Context<'info, DepositEspecial<'info>>,
+        lucro_realizado: u64,
+        afiliados: Vec<state::AfiliadoDoFechamento>,
+    ) -> Result<()> {
+        instructions::deposit_especial::handle_deposit_especial(ctx, lucro_realizado, afiliados)
     }
 
     /// Saque do lucro da janela, pelo cotista. **Não é privilegiada** — quem

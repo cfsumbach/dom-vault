@@ -7,30 +7,18 @@ Existe para uma coisa so': **qualquer pessoa refazer o binario e conferir o
 `sha256` contra o que esta' na rede.**
 
 > ✅ **Este espelho reproduz o binario INSTALADO EM MAINNET.**
-> `1038f54bde8a416f08790bafceda6b835444161c96096a877e084b7446c3e9ff`
-
-
-## Upgrade I — crédito
-
-A correção que este binário carrega em `publish_nav` — o intervalo mínimo do
-oráculo passando a valer em **tempo real**, com `MAX_NAV_TIMESTAMP_LAG` e o erro
-`6077 NavTimestampMuitoAntigo` — foi reportada e escrita por **Filipe Brito**
-(`filipemb`), pelo canal do `security.txt` compilado no binário, como o
-[PR #1](https://github.com/cfsumbach/dom-vault/pull/1) deste espelho, em
-2026-09-16. O patch entrou como ele o escreveu. Este repositório é gerado e não
-recebe merge direto — por isso o PR fica aberto como registro, e a correção
-chega por aqui.
+> `c24c17a039661c98792d7d7d5370dcbde854964f7d6e938723be2c3da79ae89f`
 
 ## O que este espelho reproduz
 
 | | |
 |---|---|
 | programa | `2KRqqGA47Pg2ML7Q8WJyaVAmEL8DaRx1sKxqzpVyNnkg` |
-| `sha256` do `.so` | `1038f54bde8a416f08790bafceda6b835444161c96096a877e084b7446c3e9ff` |
-| tamanho | 693392 bytes |
-| instrucoes no IDL | 26 |
-| erros no IDL | 78 |
-| gerado em | 2026-09-16T15:04:27Z |
+| `sha256` do `.so` | `c24c17a039661c98792d7d7d5370dcbde854964f7d6e938723be2c3da79ae89f` |
+| tamanho | 845824 bytes |
+| instrucoes no IDL | 32 |
+| erros no IDL | 87 |
+| gerado em | 2026-09-21T16:47:01Z |
 
 ## Sobre o `idl/dom_vault.json` — leia antes de vendorizar
 
@@ -69,7 +57,7 @@ sha256sum target/deploy/dom_vault.so    # tem de dar o sha da tabela acima
 
 ```bash
 solana program dump 2KRqqGA47Pg2ML7Q8WJyaVAmEL8DaRx1sKxqzpVyNnkg rede.so --url mainnet-beta
-head -c 693392 rede.so | sha256sum       # 693392 = o tamanho da tabela acima
+head -c 845824 rede.so | sha256sum       # 845824 = o tamanho da tabela acima
 ```
 
 ⚠️ **`sha256sum rede.so` direto NAO bate, e nao e' sinal de adulteracao.**

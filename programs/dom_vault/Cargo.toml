@@ -25,7 +25,7 @@ custom-panic = []
 
 [dependencies]
 anchor-lang = { version = "1.1.2", features = ["init-if-needed"] }
-anchor-spl = { version = "1.1.2", features = ["token_2022"] }
+anchor-spl = { version = "1.1.2", features = ["token_2022", "associated_token"] }
 spl-transfer-hook-interface = "2.1.0"
 spl-tlv-account-resolution = "0.11.1"
 spl-discriminator = "0.5"

@@ -32,47 +32,71 @@ fn t56_ciclo_completo() {
     assert_eq!(env.vault().nav, NAV_SCALE);
 
     // -----------------------------------------------------------------------
-    // 2. publish_nav — a mesa fecha o trimestre com +20%.
+    // 2. publish_nav — a mesa fecha o trimestre com +20% de marcacao, e o P
+    //    de 4.000 ja' esta' na gaveta: o piso publicado o inclui.
+    //      (24.000 + 4.000) / 20.000 = 1,400000
     // -----------------------------------------------------------------------
-    env.publish_nav(1_200_000);
-    assert_eq!(env.vault().nav, 1_200_000);
+    env.p_na_gaveta(4_000 * UNIT);
+    env.publish_nav(1_400_000);
+    assert_eq!(env.vault().nav, 1_400_000);
     assert_eq!(
         env.vault().lucro_sacavel_restante,
         0,
         "NAV subindo sozinho nao abre janela: marcacao nao e' lucro realizado"
     );
+    assert_eq!(
+        env.vault().p_ciclo,
+        4_000 * UNIT,
+        "o publish_nav absorveu o P da gaveta no indice"
+    );
 
     // -----------------------------------------------------------------------
-    // 3. deposit_especial — o lucro REALIZADO do ciclo entra e se reparte.
+    // 3. deposit_especial — o lucro REALIZADO do ciclo sai da gaveta e a mesa
+    //    e' cunhada (Upgrade J, D-F2-43 §4).
     //
     //    `D-F2-35`: 50% no TOTAL, e a divisao por tres vem DEPOIS. 4.000 USDC
-    //    de P sobre 20.000 cotas ao NAV 1,20:
+    //    de P sobre 20.000 cotas:
     //      aos socios   = 2.000 -> 666,666666 cada, e sobram 2 lamports
     //      aos cotistas = 2.000,000002 (a sobra e' deles)
-    //      NAV = (24.000 + 2.000) / 20.000 = 1,300000
+    //      nav_fechamento = 1,40 − 2.000 / 20.000 = 1,300000 (pos-diluicao)
+    //      a mesa entra a 1,30: 512,820512 cotas cada
+    //    O NAV PUBLICADO nao muda: o P ja' estava no preco.
     // -----------------------------------------------------------------------
     let patrimonio_antes = env.supply_dom() as u128 * env.vault().nav as u128 / UNIT as u128;
     env.deposit_especial(4_000 * UNIT);
 
     let vault = env.vault();
-    assert_eq!(vault.nav, 1_300_000, "NAV pos-distribuicao");
-    assert_eq!(vault.delta_lucro_por_cota, 100_000, "delta congelado");
+    assert_eq!(
+        vault.nav, 1_400_000,
+        "o fechamento nao mexe no NAV publicado"
+    );
+    assert_eq!(
+        vault.nav_fechamento, 1_300_000,
+        "o preco pos-diluicao, congelado para a janela"
+    );
+    assert_eq!(
+        vault.delta_lucro_por_cota, 0,
+        "a regua por cota morreu no J"
+    );
     assert_eq!(
         vault.lucro_sacavel_restante,
-        2_000 * UNIT,
-        "janela aberta com o que os cotistas conseguem sacar: supply x delta"
+        2_000 * UNIT + 2,
+        "janela aberta com a parcela dos cotistas"
     );
     for socio in env.socios.iter() {
-        assert!(
-            env.ledger(&socio.wallet.pubkey()).shares > 0,
-            "cada socio tem fee_share no livro"
+        assert_eq!(
+            env.ledger(&socio.wallet.pubkey()).shares,
+            512_820_512,
+            "cada socio tem fee_share no livro, ao nav_fechamento"
         );
     }
-    let patrimonio_depois = env.supply_dom() as u128 * vault.nav as u128 / UNIT as u128;
+    let patrimonio_depois = env.supply_dom() as u128 * vault.nav_fechamento as u128 / UNIT as u128;
     assert!(
-        (patrimonio_antes + 4_000 * UNIT as u128).abs_diff(patrimonio_depois) < UNIT as u128 / 100,
-        "a taxa dilui, nao tira dinheiro do fundo — o patrimonio cresce o P inteiro"
+        patrimonio_antes.abs_diff(patrimonio_depois) < UNIT as u128 / 100,
+        "a taxa dilui, nao tira dinheiro do fundo: {patrimonio_antes} vs {patrimonio_depois}"
     );
+    // o oraculo publica o preco novo na hora seguinte
+    env.publish_nav(1_300_000);
 
     // -----------------------------------------------------------------------
     // 4. solicitar_resgate_capital — Ana pede saída. Transferência para o

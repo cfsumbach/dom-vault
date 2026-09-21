@@ -4,7 +4,7 @@ use {
         error::DomError,
         events::LucroSacadoPorCotista,
         math::{require_nav_fresco, shares_from_usdc, usdc_from_shares},
-        state::{LucroSacado, Vault},
+        state::{LucroSacado, PosicaoDoCotista, Vault},
     },
     anchor_lang::prelude::*,
     anchor_spl::token_interface::{
@@ -14,19 +14,22 @@ use {
 
 /// Saque do lucro da janela. **Não é privilegiada** — quem assina é o cotista.
 ///
-/// # O direito, e por que ele não precisa de custo de entrada
+/// # O direito (Upgrade J, D-F2-43 §5)
 ///
-/// A distribuição sobe o NAV pro-rata. Então o lucro de cada um é exatamente
+/// O fechamento não sobe o NAV: o `P` já estava no preço da cota desde que
+/// caiu na gaveta. O que o fechamento congela é o índice do ciclo
+/// (`indice_ciclo`) e o `nav_fechamento`. O lucro de cada um é o ganho DELE
+/// pelo índice, menos a taxa da mesa:
 ///
 /// ```text
-///   lucro_i = cotas_i × delta_lucro_por_cota / NAV_SCALE
+///   ganho_i   = cotas_i × (indice_ciclo − max(indice_entrada_i, indice_ciclo_anterior)) ÷ 1e18
+///   cotista_i = ganho_i × (1 − taxa_mesa)
 /// ```
 ///
-/// e a soma sobre quem estava dentro na hora da distribuição dá a parcela dos
-/// cotistas. Não é preciso guardar quanto cada um aportou, nem quando: um único
-/// número global (`delta_lucro_por_cota`) resolve a conta para a carteira
-/// inteira. É por isso que esta instrução coube no mesmo pacote da troca de
-/// régua em vez de descer com o resgate de capital.
+/// Quem entrou no meio do ciclo tem `indice_entrada` maior e leva só o `P`
+/// que caiu depois dele — a régua "por cota" que pagou Filipe com o dinheiro
+/// de Egnon (20/09) morreu aqui. O `delta_lucro_por_cota` fica no layout, a
+/// zero, só pela compatibilidade de offsets.
 ///
 /// # Por que queima cota
 ///
@@ -83,6 +86,15 @@ pub struct SacarLucro<'info> {
     )]
     pub marca: Box<Account<'info, LucroSacado>>,
 
+    /// Upgrade J (J5/J7): a posição do cotista no índice — o direito da janela
+    /// sai dela, e o acerto da taxa roda antes (o cotista assina: o débito passa).
+    #[account(
+        mut,
+        seeds = [POSICAO_SEED, cotista.key().as_ref()],
+        bump = posicao.bump,
+        constraint = posicao.owner == cotista.key() @ DomError::PosicaoDoCotistaAusente,
+    )]
+    pub posicao: Box<Account<'info, PosicaoDoCotista>>,
     #[account(mut)]
     pub dom_mint: Box<InterfaceAccount<'info, Mint>>,
     pub usdc_mint: Box<InterfaceAccount<'info, Mint>>,
@@ -140,23 +152,51 @@ pub fn handle_sacar_lucro(ctx: Context<SacarLucro>) -> Result<()> {
         ctx.accounts.vault.max_nav_staleness,
     )?;
 
-    let nav = ctx.accounts.vault.nav;
+    // -----------------------------------------------------------------------
+    // Upgrade J (D-F2-43 §5): a parte do cotista na janela é a parcela dos
+    // cotistas sobre o ganho DELE no ciclo que fechou — pelo índice, não por
+    // cota:
+    //
+    //   cotista_i = cotas × (indice_ciclo − max(entrada, indice_ciclo_anterior))
+    //               × (1 − taxa_mesa)
+    //
+    // e a queima é ao `nav_fechamento` gravado no cofre, não ao publicado de
+    // hoje — o oráculo publica durante a janela e a ordem de chegada não pode
+    // mudar quantas cotas cada um entrega. Antes de tudo, o acerto da taxa
+    // (J7): o cotista assina, então crédito e débito passam; sem ele o saldo
+    // de cotas que entra na conta seria o de antes do fechamento.
+    // -----------------------------------------------------------------------
+    crate::indice::acertar_com_cpi(
+        &mut ctx.accounts.vault,
+        &mut ctx.accounts.posicao,
+        &ctx.accounts.cotista_dom,
+        &ctx.accounts.dom_mint,
+        &ctx.accounts.cotista.to_account_info(),
+        true,
+        &ctx.accounts.dom_token_program,
+    )?;
+    ctx.accounts.cotista_dom.reload()?;
+    ctx.accounts.dom_mint.reload()?;
+
+    let nav = ctx.accounts.vault.nav_fechamento;
+    require!(nav > 0, DomError::JanelaDeLucroFechada);
     let cotas = ctx.accounts.cotista_dom.amount;
     require!(cotas > 0, DomError::SemLucroASacar);
 
-    // -----------------------------------------------------------------------
-    // O direito: `cotas × delta`, truncado, limitado pelo que resta no bolo.
-    //
-    // O `delta` é o congelado na distribuição, **não** `nav - algum NAV atual`:
-    // o oráculo publica durante a janela, e recalcular faria a ordem de chegada
-    // mudar o direito de cada um.
-    // -----------------------------------------------------------------------
+    let ganho_no_ciclo = crate::indice::ganho(
+        cotas,
+        ctx.accounts.posicao.indice_entrada,
+        ctx.accounts.vault.indice_ciclo_anterior,
+        ctx.accounts.vault.indice_ciclo,
+    )?;
+    let parcela_cotistas_bps = BPS_DEN
+        .checked_sub(ctx.accounts.vault.perf_fee_bps_total as u128)
+        .ok_or(DomError::MathOverflow)?;
     let bruto = u64::try_from(
-        (cotas as u128)
-            .checked_mul(ctx.accounts.vault.delta_lucro_por_cota as u128)
+        (ganho_no_ciclo as u128)
+            .checked_mul(parcela_cotistas_bps)
             .ok_or(DomError::MathOverflow)?
-            .checked_div(NAV_SCALE as u128)
-            .ok_or(DomError::MathOverflow)?,
+            / BPS_DEN,
     )
     .map_err(|_| error!(DomError::MathOverflow))?;
 

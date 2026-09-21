@@ -209,6 +209,23 @@ fn t54_instrucoes_privilegiadas_rejeitam_nao_autoridade() {
         env.deposit_especial_raw(&intruso, origem, 1).is_err(),
         "T54 deposit_especial por intruso"
     );
+    // Upgrade J: a gaveta so' a autoridade aponta; as duas temporarias idem.
+    let conta_usdc_qualquer = env.socios[0].usdc;
+    assert_dom_error(
+        env.set_gaveta_usdc_raw(&intruso, conta_usdc_qualquer),
+        DomError::Unauthorized,
+        "T54 set_gaveta_usdc",
+    );
+    assert_dom_error(
+        env.atualizar_extra_account_meta_list_por(&intruso),
+        DomError::Unauthorized,
+        "T54 atualizar_extra_account_meta_list",
+    );
+    assert_dom_error(
+        env.migrar_vault_indice_raw(&intruso),
+        DomError::Unauthorized,
+        "T54 migrar_vault_indice",
+    );
     assert_dom_error(
         env.update_socios_raw(
             &intruso,
@@ -382,7 +399,9 @@ fn t89_a_lista_de_privilegiadas_sai_do_idl() {
     // `sacar_lucro` NAO entra: quem assina e' o cotista, como no
     // `redeem_fee_share`. Instrucao nova nem sempre e' caneta nova (D-F2-09).
     let exercidas = vec![
-        ("deposit_especial", "T54"),
+        // `deposit_especial` SAIU daqui no J: quem assina e' a DONA DA GAVETA
+        // (vault 1), nao a `authority` — o privilegio vem do `set_gaveta_usdc`
+        // (D-F2-43 §6b.2 item 4). A recusa dela esta em gaveta.rs.
         ("deploy_capital", "T54 / T81"),
         ("enable_cap", "T54 / T11b"),
         // `initialize` é o único que assina como autoridade SEM `has_one`: ele
@@ -410,6 +429,11 @@ fn t89_a_lista_de_privilegiadas_sai_do_idl() {
         // junto: a contagem quebra se so' uma das duas for embora.
         ("update_socios", "T54"),
         ("update_whitelist", "T54"),
+        // Upgrade J (D-F2-43): a caneta que aponta a gaveta, e as duas
+        // TEMPORARIAS da cerimonia — saem no upgrade seguinte, com as linhas.
+        ("set_gaveta_usdc", "T54 / gaveta.rs"),
+        ("migrar_vault_indice", "T54"),
+        ("atualizar_extra_account_meta_list", "T54"),
     ];
     let mut nomes_exercidos: Vec<String> = exercidas.iter().map(|(n, _)| n.to_string()).collect();
     nomes_exercidos.sort();
@@ -459,9 +483,15 @@ fn t89_a_lista_de_privilegiadas_sai_do_idl() {
     // ⚠️ E a `update_whitelist` CONTINUA nesta lista mesmo tendo ganhado o
     // caminho do porteiro. Ela segue aceitando a autoridade, e o porteiro e' uma
     // porta a mais — nao a substituicao da caneta da mesa.
+    //
+    // **O Upgrade J levou a DEZOITO** (D-F2-43): `set_gaveta_usdc` (permanente —
+    // a mesa aponta a gaveta) e as duas temporarias da cerimonia,
+    // `migrar_vault_indice` e `atualizar_extra_account_meta_list`, que saem no
+    // upgrade seguinte (volta a 16). E o `deposit_especial` SAIU da lista: a
+    // caneta dele e' a dona da gaveta, nao a autoridade.
     assert_eq!(
         do_idl.len(),
-        16,
+        18,
         "contagem de privilegiadas mudou: {do_idl:?}"
     );
 

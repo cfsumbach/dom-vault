@@ -74,6 +74,12 @@ pub const RESERVE_BPS: u16 = 1_000;
 #[constant]
 pub const FEE_SHARE_SEED: &[u8] = b"fee-share";
 
+/// PDA por carteira: `[POSICAO_SEED, owner]` — o índice de P em que entrou (Upgrade J).
+#[constant]
+pub const POSICAO_SEED: &[u8] = b"posicao";
+/// Escala do índice de P por cota: 1e18. `indice_p += delta_micro × INDICE_SCALE ÷ supply_raw`.
+pub const INDICE_SCALE: u128 = 1_000_000_000_000_000_000;
+
 /// Taxa de performance **por sócio**, em pontos-base do **lucro realizado do
 /// ciclo** (`P`). 2.000 bps = 20% para cada uma das três carteiras — ver D21.
 ///
@@ -100,6 +106,11 @@ pub const PERF_FEE_BPS_TOTAL: u16 = 5_000;
 
 /// Quantos sócios. Não é configurável: o 20/20/20 pressupõe três destinos.
 pub const NUM_SOCIOS: usize = 3;
+/// Teto da comissao de afiliado, em bps DA PARTE DA MESA sobre o ganho do indicado (J1): 1–5% (D-F2-43 §1; mesa, 21/09).
+#[constant]
+pub const MAX_AFILIADO_BPS: u16 = 500;
+/// Contas por afiliado em `remaining_accounts`: (indicado_dom, indicado_posicao, afiliado_dom, afiliado_posicao).
+pub const CONTAS_POR_AFILIADO: usize = 4;
 
 pub const BPS_DEN: u128 = 10_000;
 
@@ -316,7 +327,7 @@ pub const LUCRO_SEED: &[u8] = b"lucro";
 /// dois layouts do mesmo tamanho passam pelo discriminador e pela guarda de
 /// tamanho, e o que barra hoje são travas acidentais dependentes de dado.
 #[constant]
-pub const LAYOUT_VERSION: u16 = 2;
+pub const LAYOUT_VERSION: u16 = 3;
 
 // -----------------------------------------------------------------------------
 // LIMITES DOS PARÂMETROS DE POLÍTICA — Upgrade E

@@ -272,7 +272,39 @@ pub fn create_mint_classico(
 
 /// Conta de token do DOM: precisa de espaço para a extensão
 /// `TransferHookAccount`, senão o Token-2022 recusa a conta.
+/// A conta de cota de uma carteira e' a ATA dela (Upgrade J: o acerto e' por
+/// carteira e le UMA conta; toda porta exige a ATA canonica — `exigir_ata`).
+/// `CreateIdempotent` do programa de ATA, montada a mao; o programa de ATA
+/// dimensiona a conta com as extensoes que o mint exige (TransferHookAccount).
 pub fn create_conta_dom(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    mint: &Pubkey,
+    owner: &Pubkey,
+) -> Pubkey {
+    let ata = anchor_spl::associated_token::get_associated_token_address_with_program_id(
+        owner,
+        mint,
+        &token_2022(),
+    );
+    let ix = Instruction {
+        program_id: anchor_spl::associated_token::ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(ata, false),
+            AccountMeta::new_readonly(*owner, false),
+            AccountMeta::new_readonly(*mint, false),
+            AccountMeta::new_readonly(anchor_lang::system_program::ID, false),
+            AccountMeta::new_readonly(token_2022(), false),
+        ],
+        data: vec![1],
+    };
+    assert_ok(send(svm, payer, &[ix], &[]), "criar ATA de $DOM");
+    ata
+}
+
+/// Uma conta de cota que NAO e' a ATA — so' para provar que o J a recusa.
+pub fn create_conta_dom_auxiliar(
     svm: &mut LiteSVM,
     payer: &Keypair,
     mint: &Pubkey,
@@ -283,6 +315,15 @@ pub fn create_conta_dom(
     ])
     .unwrap();
     create_conta_token(svm, payer, mint, owner, &token_2022(), space)
+}
+
+/// Upgrade J: PDA da posicao de uma carteira no indice de P.
+pub fn posicao_pda(owner: &Pubkey) -> Pubkey {
+    Pubkey::find_program_address(
+        &[dom_vault::constants::POSICAO_SEED, owner.as_ref()],
+        &dom_vault::ID,
+    )
+    .0
 }
 
 pub fn create_conta_usdc(
@@ -385,6 +426,9 @@ pub struct Env {
     pub usdc_authority: Keypair,
     /// As três carteiras de sócio, já com contas de DOM e de USDC.
     pub socios: Vec<Holder>,
+    /// Upgrade J: a gaveta — conta de USDC de uma carteira de teste que faz as
+    /// vezes do vault 1 do Squads. `p_na_gaveta` cunha P nela.
+    pub gaveta: Pubkey,
 }
 
 /// Relógio de partida dos testes. Fixo para que D+30 e ciclo sejam
@@ -486,7 +530,13 @@ impl Env {
             usdc_mint: usdc_mint.pubkey(),
             usdc_authority,
             socios: Vec::new(),
+            gaveta: Pubkey::default(),
         };
+        // Upgrade J: a gaveta e' uma conta de USDC apontada pela mesa
+        // (`set_gaveta_usdc`); aqui a dona e' a autoridade, que tambem assina o
+        // fechamento. Lida por `deposit`, `deposit_para`, `publish_nav` e
+        // `deposit_especial`.
+        env.gaveta = env.criar_gaveta();
 
         // Contas dos sócios existem desde o começo: `deposit_especial` minta
         // direto nelas e não cria conta de token.
@@ -785,6 +835,9 @@ impl Env {
                 aportador_usdc: aportador.usdc,
                 treasury: treasury_pda(),
                 beneficiario_dom: beneficiario.dom,
+                gaveta: self.gaveta,
+                posicao: posicao_pda(&beneficiario.wallet.pubkey()),
+                system_program: anchor_lang::system_program::ID,
                 dom_token_program: token_2022(),
                 usdc_token_program: anchor_spl::token::ID,
             }
@@ -843,6 +896,9 @@ impl Env {
                 depositor_usdc: holder.usdc,
                 treasury: treasury_pda(),
                 depositor_dom: holder.dom,
+                gaveta: self.gaveta,
+                posicao: posicao_pda(&holder.wallet.pubkey()),
+                system_program: anchor_lang::system_program::ID,
                 dom_token_program: token_2022(),
                 usdc_token_program: token_classic(),
             }
@@ -850,6 +906,179 @@ impl Env {
         );
         let wallet = holder.wallet.insecure_clone();
         send(&mut self.svm, &self.payer, &[ix], &[&wallet])
+    }
+
+    /// Upgrade J: a gaveta e' uma conta de USDC de `dona`, apontada pela mesa
+    /// (`set_gaveta_usdc`, autoridade). Em mainnet a dona e' o vault 1 do
+    /// Squads; aqui, por padrao, a propria autoridade — assim os testes antigos
+    /// que fecham o ciclo "pela autoridade" continuam valendo.
+    pub fn criar_gaveta_de(&mut self, dona: &Pubkey) -> Pubkey {
+        let conta = create_conta_usdc(&mut self.svm, &self.payer, &self.usdc_mint, dona);
+        self.set_gaveta_usdc(conta);
+        conta
+    }
+
+    pub fn criar_gaveta(&mut self) -> Pubkey {
+        let dona = self.authority.pubkey();
+        self.criar_gaveta_de(&dona)
+    }
+
+    pub fn set_gaveta_usdc_raw(&mut self, signer: &Keypair, gaveta: Pubkey) -> TransactionResult {
+        let ix = Instruction::new_with_bytes(
+            dom_vault::ID,
+            &dom_vault::instruction::SetGavetaUsdc {}.data(),
+            dom_vault::accounts::SetGavetaUsdc {
+                authority: signer.pubkey(),
+                vault: vault_pda(),
+                gaveta,
+            }
+            .to_account_metas(None),
+        );
+        let signer = signer.insecure_clone();
+        send(&mut self.svm, &self.payer, &[ix], &[&signer])
+    }
+
+    pub fn set_gaveta_usdc(&mut self, gaveta: Pubkey) {
+        let authority = self.authority.insecure_clone();
+        assert_ok(
+            self.set_gaveta_usdc_raw(&authority, gaveta),
+            "set_gaveta_usdc",
+        );
+        assert_eq!(self.vault().gaveta_usdc, gaveta);
+    }
+
+    /// Upgrade J: P chega na gaveta (a mesa mandou USDC para o vault 1).
+    pub fn p_na_gaveta(&mut self, usdc: u64) {
+        let (mint, auth, gaveta) = (
+            self.usdc_mint,
+            self.usdc_authority.insecure_clone(),
+            self.gaveta,
+        );
+        mint_tokens(
+            &mut self.svm,
+            &self.payer,
+            &token_classic(),
+            &mint,
+            &auth,
+            &gaveta,
+            usdc,
+        );
+    }
+
+    pub fn sincronizar_gaveta_raw(&mut self) -> TransactionResult {
+        let ix = Instruction::new_with_bytes(
+            dom_vault::ID,
+            &dom_vault::instruction::SincronizarGaveta {}.data(),
+            dom_vault::accounts::SincronizarGaveta {
+                vault: vault_pda(),
+                gaveta: self.gaveta,
+                dom_mint: self.dom_mint,
+            }
+            .to_account_metas(None),
+        );
+        send(&mut self.svm, &self.payer, &[ix], &[])
+    }
+
+    /// Upgrade J: regrava a lista de contas extras do hook (a instrucao temporaria da cerimonia).
+    pub fn atualizar_extra_account_meta_list(&mut self) -> TransactionResult {
+        let authority = self.authority.insecure_clone();
+        self.atualizar_extra_account_meta_list_por(&authority)
+    }
+
+    /// A migracao J assinada por `signer` — em conta ja' migrada so' serve para
+    /// provar a recusa de quem nao e' a autoridade (a de layout vem depois).
+    pub fn migrar_vault_indice_raw(&mut self, signer: &Keypair) -> TransactionResult {
+        let ix = Instruction::new_with_bytes(
+            dom_vault::ID,
+            &dom_vault::instruction::MigrarVaultIndice {}.data(),
+            dom_vault::accounts::MigrarVaultIndice {
+                authority: signer.pubkey(),
+                vault: vault_pda(),
+                pagador: self.payer.pubkey(),
+                system_program: anchor_lang::system_program::ID,
+            }
+            .to_account_metas(None),
+        );
+        let signer = signer.insecure_clone();
+        send(&mut self.svm, &self.payer, &[ix], &[&signer])
+    }
+
+    pub fn atualizar_extra_account_meta_list_por(&mut self, signer: &Keypair) -> TransactionResult {
+        let ix = Instruction::new_with_bytes(
+            dom_vault::ID,
+            &dom_vault::instruction::AtualizarExtraAccountMetaList {}.data(),
+            dom_vault::accounts::AtualizarExtraAccountMetaList {
+                payer: self.payer.pubkey(),
+                authority: signer.pubkey(),
+                vault: vault_pda(),
+                mint: self.dom_mint,
+                extra_account_meta_list: validation_pda(&self.dom_mint),
+                system_program: anchor_lang::system_program::ID,
+            }
+            .to_account_metas(None),
+        );
+        let signer = signer.insecure_clone();
+        send(&mut self.svm, &self.payer, &[ix], &[&signer])
+    }
+
+    /// Upgrade J: absorve a gaveta no indice sem publicar NAV.
+    pub fn sincronizar_gaveta(&mut self) -> TransactionMetadata {
+        let ix = Instruction::new_with_bytes(
+            dom_vault::ID,
+            &dom_vault::instruction::SincronizarGaveta {}.data(),
+            dom_vault::accounts::SincronizarGaveta {
+                vault: vault_pda(),
+                gaveta: self.gaveta,
+                dom_mint: self.dom_mint,
+            }
+            .to_account_metas(None),
+        );
+        assert_ok(
+            send(&mut self.svm, &self.payer, &[ix], &[]),
+            "sincronizar_gaveta",
+        )
+    }
+
+    /// Upgrade J7: o acerto de uma carteira — credito sem assinatura, debito com o dono.
+    pub fn acertar_ix(&self, holder: &Holder, assina: bool) -> Instruction {
+        let mut metas = dom_vault::accounts::Acertar {
+            owner: holder.wallet.pubkey(),
+            vault: vault_pda(),
+            posicao: posicao_pda(&holder.wallet.pubkey()),
+            dom_mint: self.dom_mint,
+            owner_dom: holder.dom,
+            dom_token_program: token_2022(),
+        }
+        .to_account_metas(None);
+        if assina {
+            metas[0].is_signer = true;
+        }
+        Instruction::new_with_bytes(
+            dom_vault::ID,
+            &dom_vault::instruction::Acertar {}.data(),
+            metas,
+        )
+    }
+    pub fn acertar_raw(&mut self, holder: &Holder, assina: bool) -> TransactionResult {
+        let ix = self.acertar_ix(holder, assina);
+        let w = holder.wallet.insecure_clone();
+        if assina {
+            send(&mut self.svm, &self.payer, &[ix], &[&w])
+        } else {
+            send(&mut self.svm, &self.payer, &[ix], &[])
+        }
+    }
+    pub fn acertar(&mut self, holder: &Holder) -> TransactionMetadata {
+        assert_ok(self.acertar_raw(holder, true), "acertar")
+    }
+
+    /// Upgrade J: a posicao de uma carteira (None se nao existe).
+    pub fn posicao_de(&self, owner: &Pubkey) -> Option<dom_vault::state::PosicaoDoCotista> {
+        let conta = self.svm.get_account(&posicao_pda(owner))?;
+        if conta.data.len() < 8 {
+            return None;
+        }
+        dom_vault::state::PosicaoDoCotista::try_deserialize(&mut &conta.data[..]).ok()
     }
 
     pub fn deposit(&mut self, holder: &Holder, usdc_amount: u64) -> TransactionMetadata {
@@ -917,6 +1146,9 @@ impl Env {
         }
 
         self.whitelist(&wallet.pubkey(), true);
+        // Upgrade J: carteira aprovada ganha a posicao no indice antes de
+        // receber qualquer lote — e' o que a producao faz na aprovacao.
+        self.abrir_posicao(&wallet.pubkey());
         Holder { wallet, dom, usdc }
     }
 
@@ -952,11 +1184,73 @@ impl Env {
             AccountMeta::new_readonly(vault_pda(), false),
             AccountMeta::new_readonly(whitelist_pda(&origem.wallet.pubkey()), false),
             AccountMeta::new_readonly(whitelist_pda(destino_owner), false),
+            // Upgrade J: a posicao do destino e da origem (gravaveis) — a lista de contas extras resolve em producao
+            AccountMeta::new(posicao_pda(destino_owner), false),
+            AccountMeta::new(posicao_pda(&origem.wallet.pubkey()), false),
             AccountMeta::new_readonly(dom_vault::ID, false),
             AccountMeta::new_readonly(validation_pda(&self.dom_mint), false),
         ]);
         let wallet = origem.wallet.insecure_clone();
         send(&mut self.svm, &self.payer, &[ix], &[&wallet])
+    }
+
+    /// Upgrade J: cria a posicao de uma carteira da whitelist. Leva a ATA de
+    /// cota do dono se ela existir (com cota, a entrada nasce em indice_ciclo).
+    pub fn abrir_posicao_raw(&mut self, owner: &Pubkey) -> TransactionResult {
+        let ata = anchor_spl::associated_token::get_associated_token_address_with_program_id(
+            owner,
+            &self.dom_mint,
+            &token_2022(),
+        );
+        let owner_dom = if self
+            .svm
+            .get_account(&ata)
+            .map(|a| !a.data.is_empty())
+            .unwrap_or(false)
+        {
+            Some(ata)
+        } else {
+            None
+        };
+        let ix = Instruction::new_with_bytes(
+            dom_vault::ID,
+            &dom_vault::instruction::AbrirPosicao {}.data(),
+            dom_vault::accounts::AbrirPosicao {
+                pagador: self.payer.pubkey(),
+                owner: *owner,
+                owner_whitelist: whitelist_pda(owner),
+                vault: vault_pda(),
+                posicao: posicao_pda(owner),
+                owner_dom,
+                dom_token_program: token_2022(),
+                system_program: anchor_lang::system_program::ID,
+            }
+            .to_account_metas(None),
+        );
+        send(&mut self.svm, &self.payer, &[ix], &[])
+    }
+
+    pub fn abrir_posicao(&mut self, owner: &Pubkey) -> TransactionMetadata {
+        assert_ok(self.abrir_posicao_raw(owner), "abrir_posicao")
+    }
+
+    /// Um "holder da era I": tem cota e NAO tem posicao. Aporta normalmente e
+    /// a posicao e' apagada da maquina virtual — e' o estado exato das 20
+    /// carteiras de mainnet antes da migracao do J.
+    pub fn holder_da_era_i(&mut self, usdc_aportado: u64) -> Holder {
+        let h = self.cotista(usdc_aportado);
+        let pda = posicao_pda(&h.wallet.pubkey());
+        let mut conta = self.svm.get_account(&pda).unwrap();
+        conta.lamports = 0;
+        conta.data = vec![];
+        conta.owner = anchor_lang::system_program::ID;
+        self.svm.set_account(pda, conta).unwrap();
+        assert!(self
+            .svm
+            .get_account(&posicao_pda(&h.wallet.pubkey()))
+            .map(|a| a.lamports == 0)
+            .unwrap_or(true));
+        h
     }
 
     /// Queima de cota pelo próprio dono. Não passa pelo hook (só transferência
@@ -1008,6 +1302,9 @@ impl Env {
             dom_vault::accounts::PublishNav {
                 publisher: signer.pubkey(),
                 vault: vault_pda(),
+                gaveta: self.gaveta,
+                treasury: treasury_pda(),
+                dom_mint: self.dom_mint,
             }
             .to_account_metas(None),
         );
@@ -1120,6 +1417,9 @@ impl Env {
             AccountMeta::new_readonly(vault_pda(), false),
             AccountMeta::new_readonly(whitelist_pda(&holder.wallet.pubkey()), false),
             AccountMeta::new_readonly(whitelist_pda(&escrow_pda()), false),
+            // Upgrade J: a posicao do destino (escrow: vazia, isento) e da origem (gravavel)
+            AccountMeta::new(posicao_pda(&escrow_pda()), false),
+            AccountMeta::new(posicao_pda(&holder.wallet.pubkey()), false),
             AccountMeta::new_readonly(dom_vault::ID, false),
             AccountMeta::new_readonly(validation_pda(&self.dom_mint), false),
         ]);
@@ -1142,11 +1442,14 @@ impl Env {
             .to_account_metas(None),
         );
 
+        // Upgrade J (J7): toda saida acerta antes — o `acertar` assinado vai na
+        // frente, na mesma transacao; a transferencia continua sendo a -1 do pedido.
+        let acerto = self.acertar_ix(holder, true);
         let wallet = holder.wallet.insecure_clone();
         send(
             &mut self.svm,
             &self.payer,
-            &[transferencia, pedido],
+            &[acerto, transferencia, pedido],
             &[&wallet],
         )
     }
@@ -1482,6 +1785,9 @@ impl Env {
     }
 
     /// Versão explícita, para o teste que manda destinos duplicados (T61).
+    /// Upgrade J (J2): o P vem da GAVETA. `_origem_usdc` fica na assinatura por
+    /// compatibilidade dos testes antigos e e' ignorado; quem quer P na gaveta
+    /// chama `p_na_gaveta` antes (o `deposit_especial` de conveniencia faz isso).
     pub fn deposit_especial_com_destinos(
         &mut self,
         signer: &Keypair,
@@ -1490,19 +1796,37 @@ impl Env {
         contas_dom: &[Pubkey],
         socios: &[Pubkey],
     ) -> TransactionResult {
+        self.deposit_especial_com_afiliados(signer, origem_usdc, lucro, contas_dom, socios, &[])
+    }
+
+    /// J1: o fechamento com a lista de afiliados. Cada linha leva quatro
+    /// contas em `remaining_accounts` (indicado_dom, indicado_posicao,
+    /// afiliado_dom, afiliado_posicao), atras das tres posicoes dos socios.
+    pub fn deposit_especial_com_afiliados(
+        &mut self,
+        signer: &Keypair,
+        _origem_usdc: Pubkey,
+        lucro: u64,
+        contas_dom: &[Pubkey],
+        socios: &[Pubkey],
+        afiliados_contas: &[(dom_vault::state::AfiliadoDoFechamento, Pubkey, Pubkey)],
+    ) -> TransactionResult {
+        let afiliados: Vec<dom_vault::state::AfiliadoDoFechamento> =
+            afiliados_contas.iter().map(|a| a.0).collect();
         let ix = Instruction::new_with_bytes(
             dom_vault::ID,
             &dom_vault::instruction::DepositEspecial {
                 lucro_realizado: lucro,
+                afiliados: afiliados.clone(),
             }
             .data(),
             dom_vault::accounts::DepositEspecial {
                 payer: self.payer.pubkey(),
-                authority: signer.pubkey(),
+                gaveta_owner: signer.pubkey(),
                 vault: vault_pda(),
                 dom_mint: self.dom_mint,
                 usdc_mint: self.usdc_mint,
-                origem_usdc,
+                gaveta: self.gaveta,
                 treasury: treasury_pda(),
                 socio0_dom: contas_dom[0],
                 socio1_dom: contas_dom[1],
@@ -1516,17 +1840,63 @@ impl Env {
             }
             .to_account_metas(None),
         );
+        // Upgrade J: as posicoes dos socios vao atras, mutaveis (remaining_accounts)
+        let mut ix = ix;
+        for socio in socios.iter().take(3) {
+            ix.accounts
+                .push(AccountMeta::new(posicao_pda(socio), false));
+        }
+        // J1: (indicado_dom, indicado_posicao, afiliado_dom, afiliado_posicao) por linha
+        for (linha, indicado_dom, afiliado_dom) in afiliados_contas.iter() {
+            ix.accounts
+                .push(AccountMeta::new_readonly(*indicado_dom, false));
+            ix.accounts.push(AccountMeta::new_readonly(
+                posicao_pda(&linha.indicado),
+                false,
+            ));
+            ix.accounts.push(AccountMeta::new(*afiliado_dom, false));
+            ix.accounts
+                .push(AccountMeta::new(posicao_pda(&linha.afiliado), false));
+        }
         let signer = signer.insecure_clone();
         send(&mut self.svm, &self.payer, &[ix], &[&signer])
     }
 
+    /// J1: fecha o ciclo com a lista de afiliados (a dona da gaveta = autoridade).
+    pub fn deposit_especial_afiliados(
+        &mut self,
+        lucro: u64,
+        afiliados: &[(dom_vault::state::AfiliadoDoFechamento, Pubkey, Pubkey)],
+    ) -> TransactionMetadata {
+        let na_gaveta = saldo(&self.svm, &self.gaveta);
+        if na_gaveta < lucro {
+            self.p_na_gaveta(lucro - na_gaveta);
+        }
+        let authority = self.authority.insecure_clone();
+        let socios: Vec<Pubkey> = self.socios.iter().map(|s| s.wallet.pubkey()).collect();
+        let contas: Vec<Pubkey> = self.socios.iter().map(|s| s.dom).collect();
+        let gaveta = self.gaveta;
+        assert_ok(
+            self.deposit_especial_com_afiliados(
+                &authority, gaveta, lucro, &contas, &socios, afiliados,
+            ),
+            "deposit_especial com afiliados",
+        )
+    }
+
     /// Distribui `lucro` de lucro realizado, abastecendo o caixa da autoridade
     /// com exatamente esse valor. É o caminho normal do fim de ciclo.
+    /// Fecha o ciclo com `lucro` de P: se a gaveta ainda nao tem esse valor,
+    /// completa (a mesa "mandou" o resto agora) — e o cofre absorve no proprio
+    /// `deposit_especial`.
     pub fn deposit_especial(&mut self, lucro: u64) -> TransactionMetadata {
-        let origem = self.caixa_da_autoridade(lucro);
+        let na_gaveta = saldo(&self.svm, &self.gaveta);
+        if na_gaveta < lucro {
+            self.p_na_gaveta(lucro - na_gaveta);
+        }
         let authority = self.authority.insecure_clone();
         assert_ok(
-            self.deposit_especial_raw(&authority, origem, lucro),
+            self.deposit_especial_raw(&authority, self.gaveta, lucro),
             "deposit_especial",
         )
     }
@@ -1539,6 +1909,7 @@ impl Env {
                 cotista: cotista.wallet.pubkey(),
                 vault: vault_pda(),
                 marca: lucro_pda(&cotista.wallet.pubkey()),
+                posicao: posicao_pda(&cotista.wallet.pubkey()),
                 dom_mint: self.dom_mint,
                 usdc_mint: self.usdc_mint,
                 cotista_dom: cotista.dom,
@@ -1566,6 +1937,7 @@ impl Env {
                 socio: socio.wallet.pubkey(),
                 vault: vault_pda(),
                 ledger: fee_share_pda(&socio.wallet.pubkey()),
+                posicao: posicao_pda(&socio.wallet.pubkey()),
                 dom_mint: self.dom_mint,
                 usdc_mint: self.usdc_mint,
                 socio_dom: socio.dom,

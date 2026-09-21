@@ -36,7 +36,7 @@ use {
         error::DomError,
         events::Deposited,
         math::{require_nav_fresco, shares_from_usdc},
-        state::Vault,
+        state::{PosicaoDoCotista, Vault},
         whitelist::require_whitelisted,
     },
     anchor_lang::prelude::*,
@@ -48,6 +48,7 @@ use {
 #[derive(Accounts)]
 pub struct DepositPara<'info> {
     /// Quem PAGA o USDC. Assina, e não recebe cota nenhuma.
+    #[account(mut)]
     pub aportador: Signer<'info>,
     /// CHECK: validada por `require_whitelisted`.
     pub aportador_whitelist: UncheckedAccount<'info>,
@@ -59,6 +60,7 @@ pub struct DepositPara<'info> {
     pub beneficiario_whitelist: UncheckedAccount<'info>,
 
     #[account(
+        mut,
         seeds = [VAULT_SEED],
         bump = vault.bump,
         has_one = dom_mint @ DomError::UnknownMint,
@@ -67,6 +69,19 @@ pub struct DepositPara<'info> {
         constraint = !vault.paused @ DomError::Paused,
     )]
     pub vault: Box<Account<'info, Vault>>,
+    /// Upgrade J: a gaveta, lida antes de cunhar (ver `deposit.rs`).
+    #[account(constraint = gaveta.key() == vault.gaveta_usdc @ DomError::GavetaErrada)]
+    pub gaveta: Box<InterfaceAccount<'info, TokenAccount>>,
+    /// Upgrade J: a posicao do BENEFICIARIO no indice — e' ele quem recebe o lote.
+    #[account(
+        init_if_needed,
+        payer = aportador,
+        space = 8 + PosicaoDoCotista::INIT_SPACE,
+        seeds = [POSICAO_SEED, beneficiario.key().as_ref()],
+        bump,
+    )]
+    pub posicao: Box<Account<'info, PosicaoDoCotista>>,
+    pub system_program: Program<'info, System>,
 
     #[account(mut)]
     pub dom_mint: Box<InterfaceAccount<'info, Mint>>,
@@ -138,6 +153,28 @@ pub fn handle_deposit_para(ctx: Context<DepositPara>, usdc_amount: u64) -> Resul
         ctx.accounts.vault.max_nav_staleness,
     )?;
 
+    // Upgrade J: gaveta antes de cunhar; a posicao e' do beneficiario (ver deposit.rs).
+    crate::indice::absorver_no_cofre(
+        &mut ctx.accounts.vault,
+        &ctx.accounts.gaveta.key(),
+        ctx.accounts.gaveta.amount,
+        ctx.accounts.dom_mint.supply,
+    )?;
+    // J7: o beneficiario NAO assina — so' o credito passa; debito pendente recusa
+    // (AcertoPendente): ele acerta assinando, e depois recebe o bonus.
+    crate::indice::acertar_com_cpi(
+        &mut ctx.accounts.vault,
+        &mut ctx.accounts.posicao,
+        &ctx.accounts.beneficiario_dom,
+        &ctx.accounts.dom_mint,
+        &ctx.accounts.beneficiario.to_account_info(),
+        false,
+        &ctx.accounts.dom_token_program,
+    )?;
+    ctx.accounts.beneficiario_dom.reload()?;
+    ctx.accounts.dom_mint.reload()?;
+    let cotas_antes = ctx.accounts.beneficiario_dom.amount;
+
     let nav = ctx.accounts.vault.nav;
     let shares = shares_from_usdc(usdc_amount, nav)?;
     require!(shares > 0, DomError::ZeroShares);
@@ -172,6 +209,15 @@ pub fn handle_deposit_para(ctx: Context<DepositPara>, usdc_amount: u64) -> Resul
             vault_seeds,
         ),
         shares,
+    )?;
+    let bump_posicao = ctx.bumps.posicao;
+    crate::indice::registrar_entrada(
+        &mut ctx.accounts.posicao,
+        &beneficiario,
+        bump_posicao,
+        cotas_antes,
+        shares,
+        ctx.accounts.vault.indice_p,
     )?;
 
     // O cap olha o BENEFICIÁRIO, que é quem ficou com a cota.

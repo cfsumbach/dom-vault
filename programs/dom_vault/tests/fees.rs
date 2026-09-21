@@ -35,30 +35,42 @@ const LUCRO: u64 = 200 * UNIT;
 // T38 — a distribuição
 // ---------------------------------------------------------------------------
 
-/// `P` = 200 USDC sobre 1.000 cotas ao NAV 1,000000, com a taxa de gênese —
-/// **`D-F2-35`: 50% no TOTAL, e não 20% por sócio.**
+/// `P` = 200 USDC sobre 1.000 cotas, com a taxa de gênese —
+/// **`D-F2-35`: 50% no TOTAL, e não 20% por sócio.** Upgrade J: o P já está na
+/// gaveta quando o oráculo publica o piso, (1.000 + 200) ÷ 1.000 = 1,20; o
+/// fechamento não mexe no NAV publicado.
 ///
 /// - aos sócios = 200 x 50% = 100 USDC; por sócio = 100 / 3 = 33,333333
 /// - a sobra da divisão por três (1 lamport) vai para os cotistas
-/// - aos cotistas = 100 -> NAV = (1.000 + 100) / 1.000 = 1,100000
-/// - delta por cota = 0,100000
+/// - aos cotistas = 100,000001 — o bolo da janela
+/// - nav_fechamento = 1,20 − 100 / 1.000 = 1,100000 (pós-diluição)
 #[test]
 fn t38_deposit_especial_minta_fee_share_nas_tres_carteiras() {
     let mut env = Env::new();
     let cotista = env.cotista(APORTE);
 
     let caixa_antes = env.caixa();
+    env.publish_nav_pela_mesa(1_200_000);
     let meta = env.deposit_especial(LUCRO);
     assert!(tem_evento::<LucroDistribuido>(&meta));
 
     let vault = env.vault();
-    assert_eq!(vault.nav, 1_100_000, "NAV pos-distribuicao");
-    assert_eq!(vault.delta_lucro_por_cota, 100_000, "delta congelado");
+    assert_eq!(
+        vault.nav, 1_200_000,
+        "o fechamento nao mexe no NAV publicado"
+    );
+    assert_eq!(
+        vault.nav_fechamento, 1_100_000,
+        "o preco pos-diluicao, congelado"
+    );
+    assert_eq!(
+        vault.delta_lucro_por_cota, 0,
+        "a regua por cota morreu no J"
+    );
     assert_eq!(
         vault.lucro_sacavel_restante,
-        100 * UNIT,
-        "o bolo e' `supply x delta` — o que os cotistas conseguem sacar. A sobra \
-         da divisao por tres subiu o patrimonio e nao tem dono (D-F2-35)"
+        100 * UNIT + 1,
+        "o bolo e' a parcela dos cotistas, com a sobra da divisao por tres (D-F2-35)"
     );
     assert!(vault.ultima_distribuicao_ts > 0, "carimbo da distribuicao");
 
@@ -69,8 +81,8 @@ fn t38_deposit_especial_minta_fee_share_nas_tres_carteiras() {
         "o lucro realizado entrou na treasury na mesma transacao"
     );
 
-    // 33,333333 USDC por sócio ao NAV JÁ SUBIDO de 1,100000 = 30,303030 cotas.
-    // As cotas saem ao NAV pós-distribuição, senão a emissão criaria cota de
+    // 33,333333 USDC por sócio ao nav_fechamento de 1,100000 = 30,303030 cotas.
+    // As cotas saem ao NAV pós-diluição, senão a emissão criaria cota de
     // graça e abriria um buraco do tamanho da parcela dos sócios.
     let esperado = 30_303_030;
     for socio in env.socios.iter() {
@@ -89,8 +101,8 @@ fn t38_deposit_especial_minta_fee_share_nas_tres_carteiras() {
     assert_eq!(env.saldo_dom(&cotista), APORTE, "cotas do cotista intactas");
     assert_eq!(env.supply_dom(), APORTE + 3 * esperado);
 
-    // O patrimônio fecha: (supply + cotas novas) x NAV novo = 1.000 + 200.
-    let patrimonio = env.supply_dom() as u128 * vault.nav as u128 / UNIT as u128;
+    // O patrimônio fecha: (supply + cotas novas) x nav_fechamento = 1.000 + 200.
+    let patrimonio = env.supply_dom() as u128 * vault.nav_fechamento as u128 / UNIT as u128;
     assert!(
         (1_200 * UNIT as u128).abs_diff(patrimonio) < UNIT as u128 / 100,
         "patrimonio preservado: {patrimonio}"
@@ -156,25 +168,27 @@ fn t41_a_base_e_o_p_do_ciclo_nao_a_subida_do_nav() {
     let mut env = Env::new();
     let _cotista = env.cotista(APORTE);
 
+    // o piso com o P dentro: (1.000 + 200) ÷ 1.000
+    env.publish_nav_pela_mesa(1_200_000);
     env.deposit_especial(LUCRO);
     let por_socio_1 = env.ledger(&env.socios[0].wallet.pubkey()).shares;
-    let nav_1 = env.vault().nav;
+    let nav_1 = env.vault().nav_fechamento;
     let valor_1 = por_socio_1 as u128 * nav_1 as u128 / UNIT as u128;
 
-    // NAV sobe forte por marcação, e a quinzena passa.
-    env.publish_nav(1_200_000);
+    // NAV sobe forte por marcação (o P novo ja' dentro), e a quinzena passa.
+    env.publish_nav_pela_mesa(1_500_000);
     env.avancar(DISTRIBUICAO_INTERVAL);
 
     let ledger_antes = env.ledger(&env.socios[0].wallet.pubkey()).shares;
     env.deposit_especial(LUCRO);
-    let nav_2 = env.vault().nav;
+    let nav_2 = env.vault().nav_fechamento;
     let por_socio_2 = env.ledger(&env.socios[0].wallet.pubkey()).shares - ledger_antes;
     let valor_2 = por_socio_2 as u128 * nav_2 as u128 / UNIT as u128;
 
     // `D-F2-35`: o campo e' o TOTAL, e a divisao por tres vem depois.
     let esperado = (LUCRO as u128 * PERF_FEE_BPS_TOTAL as u128) / 10_000 / NUM_SOCIOS as u128;
     assert!(
-        valor_1.abs_diff(esperado) <= 1 && valor_2.abs_diff(esperado) <= 1,
+        valor_1.abs_diff(esperado) <= 2 && valor_2.abs_diff(esperado) <= 2,
         "cada distribuicao paga a fatia do socio, em USDC: {valor_1} e {valor_2} contra {esperado}"
     );
     assert!(

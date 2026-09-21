@@ -87,6 +87,8 @@ fn t19_hook_rejeita_mint_estranho() {
             AccountMeta::new_readonly(vault_pda(), false),
             AccountMeta::new_readonly(whitelist_pda(&atacante.pubkey()), false),
             AccountMeta::new_readonly(whitelist_pda(&atacante.pubkey()), false),
+            AccountMeta::new(posicao_pda(&atacante.pubkey()), false),
+            AccountMeta::new(posicao_pda(&atacante.pubkey()), false),
         ],
         1_000,
     );
@@ -144,6 +146,8 @@ fn t20_hook_rejeita_contas_de_outro_mint() {
             AccountMeta::new_readonly(vault_pda(), false),
             AccountMeta::new_readonly(whitelist_pda(&atacante.pubkey()), false),
             AccountMeta::new_readonly(whitelist_pda(&atacante.pubkey()), false),
+            AccountMeta::new(posicao_pda(&atacante.pubkey()), false),
+            AccountMeta::new(posicao_pda(&atacante.pubkey()), false),
         ],
         1_000,
     );
@@ -179,6 +183,8 @@ fn t21_hook_rejeita_invocacao_direta() {
             AccountMeta::new_readonly(vault_pda(), false),
             AccountMeta::new_readonly(whitelist_pda(&origem.wallet.pubkey()), false),
             AccountMeta::new_readonly(whitelist_pda(&destino.wallet.pubkey()), false),
+            AccountMeta::new(posicao_pda(&destino.wallet.pubkey()), false),
+            AccountMeta::new(posicao_pda(&origem.wallet.pubkey()), false),
         ],
         1_000,
     );
@@ -229,9 +235,17 @@ fn t22_hook_rejeita_whitelist_ausente_no_destino() {
 
     // Contra-teste: com a whitelist criada, a mesma transferência passa.
     env.whitelist(&destino_wallet.pubkey(), true);
+    // Upgrade J: whitelist ativa mas SEM posicao no indice — o hook recusa com
+    // erro proprio (a carteira nao pode entrar num lote sem registrar o indice).
+    assert_dom_error(
+        env.transfer(&origem, &destino, &destino_wallet.pubkey(), 1_000),
+        DomError::PosicaoDoCotistaAusente,
+        "T22 whitelist ativa sem posicao (Upgrade J)",
+    );
+    env.abrir_posicao(&destino_wallet.pubkey());
     assert_ok(
         env.transfer(&origem, &destino, &destino_wallet.pubkey(), 1_000),
-        "T22 contra-teste com whitelist ativa",
+        "T22 contra-teste com whitelist ativa e posicao aberta",
     );
 
     // E desabilitar volta a bloquear — `active = false` não é "sem opinião".

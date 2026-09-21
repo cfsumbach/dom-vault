@@ -583,15 +583,15 @@ fn tamanho_da_conta_do_cofre() {
     use anchor_lang::Space;
     assert_eq!(
         8 + dom_vault::state::Vault::INIT_SPACE,
-        603,
-        "layout do cofre mudou — confira a tabela de offsets da migrate_vault_resgate"
+        731,
+        "layout do cofre mudou — confira a tabela de offsets da migrar_vault_indice (Upgrade J: 603 → 731)"
     );
 
     let env = Env::new();
     let conta = env.svm.get_account(&vault_pda()).unwrap();
     assert_eq!(
         conta.data.len(),
-        603,
+        731,
         "a conta gravada tem o tamanho do struct"
     );
 }
@@ -645,7 +645,7 @@ fn layout_do_mesmo_tamanho_desserializa_e_so_uma_trava_acidental_barra() {
     assert_eq!(min_deposit_certo, MIN_DEPOSIT);
 
     let atual = env.bytes_do_cofre();
-    assert_eq!(atual.len(), 603);
+    assert_eq!(atual.len(), 731);
 
     // `paused` mora no byte 378 e `cap_enforced` no 379 — aqui, o 3º e o 4º byte
     // deste u64. Com `1`, os dois viram `0x00`: booleanos válidos, e a trava (1)
@@ -653,11 +653,11 @@ fn layout_do_mesmo_tamanho_desserializa_e_so_uma_trava_acidental_barra() {
     // a sorte que o layout de produção teve.
     const CAMPO_RESSUSCITADO: u64 = 1;
 
-    let mut alternativo = Vec::with_capacity(603);
+    let mut alternativo = Vec::with_capacity(731);
     alternativo.extend_from_slice(&atual[..344]);
     alternativo.extend_from_slice(&CAMPO_RESSUSCITADO.to_le_bytes());
-    alternativo.extend_from_slice(&atual[344..595]);
-    assert_eq!(alternativo.len(), 603, "mesmo tamanho da conta viva");
+    alternativo.extend_from_slice(&atual[344..723]);
+    assert_eq!(alternativo.len(), 731, "mesmo tamanho da conta viva");
 
     let mut conta = env.svm.get_account(&vault_pda()).unwrap();
     conta.data = alternativo;

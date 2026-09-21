@@ -191,4 +191,23 @@ pub enum DomError {
     // variantes acima: codigo de erro e' contrato publico.
     #[msg("Timestamp de NAV do oraculo atrasado demais em relacao ao relogio da rede")]
     NavTimestampMuitoAntigo,
+    // Upgrade J (D-F2-43). No fim do enum, como sempre: codigo de erro e' contrato publico.
+    #[msg("A gaveta tem menos do que o contrato viu — nunca se desconta o indice")]
+    GavetaDiminuiu,
+    #[msg("Conservacao falhou: p_ciclo nao bate com o saldo da gaveta")]
+    PConservacaoFalhou,
+    #[msg("A conta da gaveta nao e' a que o cofre conhece")]
+    GavetaErrada,
+    #[msg("A posicao do cotista no indice nao existe — carteira de antes do J sem migracao")]
+    PosicaoDoCotistaAusente,
+    #[msg("Acerto pendente: a carteira deve taxa e so' o dono pode queimar — chame `acertar` assinando")]
+    AcertoPendente,
+    #[msg("O P na gaveta nao e' o que a proposta esperava")]
+    PDiferenteDoEsperado,
+    #[msg("Lista de afiliados invalida: bps fora de 1..=500, indicado == afiliado, ou contas que nao batem com a lista")]
+    AfiliadoInvalido,
+    #[msg("Indicado repetido na lista de afiliados — uma comissao por indicado")]
+    AfiliadoRepetido,
+    #[msg("A conta de cota nao e' a ATA do dono — no J toda cota vive na ATA (o acerto e' por carteira, nao por conta)")]
+    ContaDeCotaNaoEAta,
 }

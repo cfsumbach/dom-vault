@@ -208,6 +208,44 @@ pub struct Vault {
     /// uma proposta da mesa poderia zerar a parcela dos cotistas sem que
     /// nenhum cotista votasse. O teto é a parte que a votação não alcança.
     pub perf_fee_bps_total: u16,
+    // -----------------------------------------------------------------------
+    // Upgrade J (D-F2-43) — o lucro realizado por índice, e o piso.
+    //
+    // A gaveta é a ATA de USDC do vault 1 do Squads: tudo que a mesa manda para
+    // lá é lucro realizado do ciclo (P). O contrato acompanha o saldo dela e,
+    // a cada USDC novo, sobe `indice_p` em `delta × INDICE_SCALE ÷ supply`.
+    // Cada carteira guarda o índice em que entrou (`PosicaoDoCotista`); o
+    // ganho dela no ciclo é `cotas × (indice_p − max(entrada, indice_ciclo))`.
+    // Quem entra no meio paga o bruto (já com o P dentro) e não participa do
+    // P anterior. Σ ganhos = P ao centavo, provado nos testes com 18 carteiras.
+    // -----------------------------------------------------------------------
+    /// A gaveta: conta de USDC cuja autoridade é o vault 1 do Squads. Gravada
+    /// na migração; muda por `set_gaveta_usdc` (autoridade, proposta 2/3).
+    pub gaveta_usdc: Pubkey,
+    /// P acumulado por cota desde a gênese, escalado por `INDICE_SCALE`. Só sobe.
+    pub indice_p: u128,
+    /// `indice_p` no último fechamento — a entrada efetiva mínima do ciclo em curso.
+    pub indice_ciclo: u128,
+    /// `indice_ciclo` do fechamento anterior — a janela de saque calcula sobre
+    /// `indice_ciclo − max(entrada, indice_ciclo_anterior)`.
+    pub indice_ciclo_anterior: u128,
+    /// Último saldo da gaveta que o contrato viu. Delta positivo vira índice;
+    /// delta negativo recusa a instrução (`GavetaDiminuiu`). Zera no fechamento.
+    pub gaveta_saldo_visto: u64,
+    /// Σ dos deltas positivos da gaveta no ciclo — a prova de conservação do
+    /// fechamento (`p_ciclo == saldo da gaveta`). Zera no fechamento.
+    pub p_ciclo: u64,
+    /// NAV líquido: (capital no campo + P na gaveta) ÷ supply. Só sobe dentro
+    /// do ciclo; `publish_nav` recusa bruto abaixo dele. Recalculado no fechamento.
+    pub nav_piso: u64,
+    /// NAV gravado no fechamento — o preço da queima na janela de saque.
+    pub nav_fechamento: u64,
+    /// J7 — quanto a mesa ja' cobrou POR COTA por diluicao, acumulado desde a
+    /// genese (micro-USDC por cota, escalado por INDICE_SCALE). Monotonico:
+    /// a cada fechamento `+= mesa × INDICE_SCALE ÷ supply_antes_da_cunhagem`.
+    /// O acerto de cada carteira compara o que ela pagou por diluicao com o
+    /// que devia pelo indice (ganho × taxa_mesa) e cunha/queima a diferenca.
+    pub indice_diluicao: u128,
     /// **Versão do layout desta conta. É, e continua sendo, o ÚLTIMO campo.**
     ///
     /// O discriminador do Anchor identifica **tipo**, não **versão**. Duas versões
@@ -227,6 +265,35 @@ pub struct Vault {
     /// **Campo novo entra ANTES deste.** Contraria o hábito de append-only do
     /// Borsh, e é de propósito.
     pub layout_version: u16,
+}
+
+/// Uma linha da lista de afiliados do fechamento (J1, D-F2-43 §1). Argumento
+/// do `deposit_especial`, votado na proposta: `indicado` é o cotista, `afiliado`
+/// quem o trouxe, `bps` a fatia **da parte da mesa** sobre o ganho do indicado
+/// (500 = 5%). A comissão sai de dentro da mesa; o cotista não paga nada a mais.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AfiliadoDoFechamento {
+    pub indicado: Pubkey,
+    pub afiliado: Pubkey,
+    pub bps: u16,
+}
+
+/// A posição de uma carteira no índice de P. PDA `[POSICAO_SEED, owner]`.
+///
+/// `indice_entrada` é a média ponderada pelas cotas dos índices em que cada
+/// lote entrou (aporte, `deposit_para`, transferência recebida). Resgate não a
+/// altera. Criada no primeiro aporte; carteira sem esta conta no fechamento é
+/// carteira de antes do J — a migração cria as vinte de 21/09 com entrada 0.
+#[account]
+#[derive(InitSpace)]
+pub struct PosicaoDoCotista {
+    pub owner: Pubkey,
+    pub indice_entrada: u128,
+    /// J7 — o `indice_diluicao` do cofre no ultimo acerto desta carteira.
+    pub indice_diluicao_visto: u128,
+    /// J7 — o `indice_ciclo` ate onde a taxa desta carteira ja' foi acertada.
+    pub indice_p_acertado: u128,
+    pub bump: u8,
 }
 
 /// Marca de saque de lucro de uma carteira. PDA `[LUCRO_SEED, owner]`.

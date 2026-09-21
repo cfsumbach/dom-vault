@@ -4,7 +4,7 @@ use {
         error::DomError,
         events::FeeShareRedeemed,
         math::{require_nav_fresco, usdc_from_shares},
-        state::{FeeShareLedger, Vault},
+        state::{FeeShareLedger, PosicaoDoCotista, Vault},
     },
     anchor_lang::prelude::*,
     anchor_spl::token_interface::{
@@ -22,6 +22,7 @@ use {
 pub struct RedeemFeeShare<'info> {
     pub socio: Signer<'info>,
     #[account(
+        mut,
         seeds = [VAULT_SEED],
         bump = vault.bump,
         has_one = dom_mint @ DomError::UnknownMint,
@@ -37,6 +38,15 @@ pub struct RedeemFeeShare<'info> {
         constraint = ledger.socio == socio.key() @ DomError::SocioMismatch,
     )]
     pub ledger: Box<Account<'info, FeeShareLedger>>,
+    /// Upgrade J (J7): toda saída acerta antes — o sócio assina, então o
+    /// débito (se segurou cota o ciclo inteiro) queima aqui mesmo.
+    #[account(
+        mut,
+        seeds = [POSICAO_SEED, socio.key().as_ref()],
+        bump = posicao.bump,
+        constraint = posicao.owner == socio.key() @ DomError::PosicaoDoCotistaAusente,
+    )]
+    pub posicao: Box<Account<'info, PosicaoDoCotista>>,
 
     #[account(mut)]
     pub dom_mint: Box<InterfaceAccount<'info, Mint>>,
@@ -69,6 +79,19 @@ pub fn handle_redeem_fee_share(ctx: Context<RedeemFeeShare>, shares: u64) -> Res
         ctx.accounts.ledger.shares >= shares,
         DomError::InsufficientFeeShare
     );
+
+    // J7: o acerto antes da queima — o saldo que sai e' o acertado.
+    crate::indice::acertar_com_cpi(
+        &mut ctx.accounts.vault,
+        &mut ctx.accounts.posicao,
+        &ctx.accounts.socio_dom,
+        &ctx.accounts.dom_mint,
+        &ctx.accounts.socio.to_account_info(),
+        true,
+        &ctx.accounts.dom_token_program,
+    )?;
+    ctx.accounts.socio_dom.reload()?;
+    ctx.accounts.dom_mint.reload()?;
 
     // -----------------------------------------------------------------------
     // NAV velho não paga taxa. (D4, corrigida no Upgrade C — 2026-08-26)

@@ -2,9 +2,9 @@ use {
     crate::{
         constants::*,
         error::DomError,
-        events::{JanelaDeLucroEncerrada, LucroDistribuido},
-        math::{require_nav_fresco, shares_from_usdc, usdc_from_shares},
-        state::{FeeShareLedger, Vault},
+        events::{ComissaoDeAfiliado, JanelaDeLucroEncerrada, LucroDistribuido},
+        math::{require_nav_fresco, shares_from_usdc},
+        state::{AfiliadoDoFechamento, FeeShareLedger, PosicaoDoCotista, Vault},
     },
     anchor_lang::prelude::*,
     anchor_spl::token_interface::{
@@ -30,14 +30,13 @@ use {
 /// virava caixa saindo do cofre. Com a base sendo `P`, a taxa só existe depois
 /// que o dinheiro entrou — e ele entra aqui, na mesma assinatura.
 ///
-/// # Por onde o dinheiro chega
+/// # Por onde o dinheiro chega (Upgrade J)
 ///
-/// `origem_usdc` é a conta de USDC **da autoridade**, isto é, do Vault PDA do
-/// Squads. A mesa devolve o lucro da carteira operacional para lá com uma
-/// transferência SPL comum (fora do programa), e a proposta executa esta
-/// instrução. São dois passos de propósito: o lucro passa pela custódia do
-/// multisig **antes** de ser repartido, e a repartição fica atômica com a
-/// entrada do dinheiro. Não existe distribuição declarada sem caixa por trás.
+/// Da **gaveta** — a conta de USDC que a mesa apontou por `set_gaveta_usdc`
+/// (em mainnet a ATA do vault 1 do Squads). Tudo que cai lá é lucro realizado
+/// do ciclo: o `publish_nav` seguinte absorve no índice, e **não sai mais**.
+/// No fechamento a dona da gaveta assina esta instrução e o P vai para o caixa
+/// por CPI, aqui dentro — sem conta intermediária, numa proposta só.
 ///
 /// O **capital** de volta continua entrando pelo `return_capital`, que não é
 /// privilegiado. Aqui entra só o que passou do capital: o `P`.
@@ -47,16 +46,38 @@ use {
 /// Esta instrução **abre** a janela: grava `lucro_sacavel_restante = 40% de P`
 /// e o `delta_lucro_por_cota`. Quem fecha é o `deploy_capital` do ciclo
 /// seguinte — o marco é o re-deploy, não um cronômetro (D-F2-09).
+/// # Contas restantes (`remaining_accounts`) — Upgrade J
+///
+/// `[0..3]` a `PosicaoDoCotista` de cada sócio, na ordem de `vault.socios`,
+/// mutável. A cunhagem da mesa é uma ENTRADA: entra na média ponderada ao
+/// índice de agora, senão as cotas novas reivindicariam o P do ciclo que
+/// acabou de fechar. E o acerto pendente do sócio (se ele segurou cota o
+/// ciclo inteiro) é compensado na própria cunhagem — crédito cunha a mais,
+/// débito cunha a menos —, que é como a conta fecha sem a assinatura dele.
+/// Vão em `remaining_accounts` porque três `Account` a mais na struct
+/// estouravam a pilha do `try_accounts` (4.592 de 4.096 bytes). A conta tem
+/// de existir (`abrir_posicao`, sem whitelist para sócio).
+///
+/// `[3..]` (J1) por linha da lista `afiliados`, na ordem dela, quatro contas:
+/// `indicado_dom` (conta de cota do indicado — só leitura, dá as cotas),
+/// `indicado_posicao` (a entrada dele), `afiliado_dom` (recebe a comissão,
+/// mutável), `afiliado_posicao` (mutável: a comissão é uma entrada e o acerto
+/// dele é compensado na cunhagem, como o dos sócios).
 #[derive(Accounts)]
 pub struct DepositEspecial<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
-    pub authority: Signer<'info>,
+    /// **A dona da gaveta** — em mainnet o vault 1 do Squads (`2nFNfsWi…`),
+    /// assinando dentro da proposta 2/3 (`vaultIndex 1`). O privilégio vem de a
+    /// mesa ter apontado a gaveta por `set_gaveta_usdc` (vault 0, 2/3): quem
+    /// pode mover o P é quem fecha o ciclo, e o P sai da gaveta para o caixa
+    /// por CPI aqui dentro — nenhuma conta intermediária, nenhuma proposta a
+    /// mais. (D-F2-43 §6b.2, item 4 revertido em 21/09: gaveta com chave.)
+    pub gaveta_owner: Signer<'info>,
     #[account(
         mut,
         seeds = [VAULT_SEED],
         bump = vault.bump,
-        has_one = authority @ DomError::Unauthorized,
         has_one = dom_mint @ DomError::UnknownMint,
         has_one = usdc_mint @ DomError::UnknownUsdcMint,
         has_one = treasury @ DomError::InvalidTreasury,
@@ -66,16 +87,16 @@ pub struct DepositEspecial<'info> {
     #[account(mut)]
     pub dom_mint: Box<InterfaceAccount<'info, Mint>>,
     pub usdc_mint: Box<InterfaceAccount<'info, Mint>>,
-    /// Conta de USDC de onde sai o `P`. Pertence à **autoridade** — o Vault PDA
-    /// do Squads —, então quem assina a saída é o mesmo quórum que assina a
-    /// distribuição.
+    /// A gaveta: a conta de USDC que a mesa apontou (`vault.gaveta_usdc`), cuja
+    /// dona assina esta instrução. O P vem DIRETO dela — nunca passou por outra
+    /// conta; nunca saiu do preço (J2).
     #[account(
         mut,
-        token::mint = usdc_mint,
-        token::authority = authority,
+        constraint = gaveta.key() == vault.gaveta_usdc @ DomError::GavetaErrada,
+        token::authority = gaveta_owner,
         token::token_program = usdc_token_program,
     )]
-    pub origem_usdc: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub gaveta: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(mut)]
     pub treasury: Box<InterfaceAccount<'info, TokenAccount>>,
 
@@ -132,35 +153,37 @@ pub struct DepositEspecial<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handle_deposit_especial(ctx: Context<DepositEspecial>, lucro_realizado: u64) -> Result<()> {
+pub fn handle_deposit_especial<'info>(
+    ctx: Context<'info, DepositEspecial<'info>>,
+    lucro_realizado: u64,
+    afiliados: Vec<AfiliadoDoFechamento>,
+) -> Result<()> {
+    // -----------------------------------------------------------------------
+    // Upgrade J — o fechamento pela D-F2-43 §4, na ordem obrigatoria:
+    //
+    //   1. le P da gaveta; confere p_ciclo == P (conservacao)
+    //   2. mesa = P × taxa_mesa
+    //   3. (J1) cunha os afiliados: comissao = ganho_indicado × taxa × bps
+    //   4. cunha o resto da mesa para os socios; indice_diluicao anda
+    //   5. move o P da gaveta para o treasury (a PDA assina)
+    //   6. indice_ciclo_anterior/indice_ciclo/saldo visto/p_ciclo/piso/nav_fechamento; abre a janela
+    //
+    // O NAV NAO SOBE: o P ja' esta' no preco desde que chegou na gaveta. A unica
+    // mudanca de preco e' a queda pela cunhagem da mesa — na proxima publicacao.
+    // `lucro_realizado` e' o P que a PROPOSTA esperava: se a gaveta tiver outro
+    // valor (alguem mandou entre a proposta e a execucao), recusa — a mesa vota
+    // um numero, nao um "o que estiver la".
+    // -----------------------------------------------------------------------
     let now = Clock::get()?.unix_timestamp;
-
-    require!(lucro_realizado > 0, DomError::ZeroLucro);
-
-    // -----------------------------------------------------------------------
-    // DV11 — a distribuição emite cota ao NAV. NAV velho emite cota errada, e
-    // cota errada dilui quem já está dentro. Entra na trava como as outras.
-    // -----------------------------------------------------------------------
     require_nav_fresco(
         ctx.accounts.vault.nav_ts,
         now,
         ctx.accounts.vault.max_nav_staleness,
     )?;
-
     let nav = ctx.accounts.vault.nav;
     let supply = ctx.accounts.dom_mint.supply;
     require!(supply > 0, DomError::EmptySupply);
 
-    // -----------------------------------------------------------------------
-    // DV10 — cadência. Quinzenal.
-    //
-    // Aqui a trava vem **antes** de qualquer movimento, ao contrário do
-    // `accrue_performance`, onde ela ficava depois do desvio de "sem lucro".
-    // Lá havia um caso inofensivo a proteger (chamada que não cobrava nada);
-    // aqui não há: toda chamada move dinheiro, porque `P > 0` é pré-condição.
-    //
-    // `ultima_distribuicao_ts == 0` é "nunca distribuiu": a primeira não espera.
-    // -----------------------------------------------------------------------
     if ctx.accounts.vault.ultima_distribuicao_ts > 0 {
         require!(
             now.saturating_sub(ctx.accounts.vault.ultima_distribuicao_ts)
@@ -168,173 +191,216 @@ pub fn handle_deposit_especial(ctx: Context<DepositEspecial>, lucro_realizado: u
             DomError::DistribuicaoMuitoCedo
         );
     }
-
-    // -----------------------------------------------------------------------
-    // Uma janela por vez — e esta distribuição **fecha** a anterior se ela
-    // ficou aberta.
-    //
-    // O fecho normal é o `deploy_capital` do ciclo seguinte (D-F2-09): o
-    // capital volta a campo, a janela acaba. Mas um ciclo pode não ter
-    // re-deploy nenhum — capital que fica em casa é decisão legítima da mesa —
-    // e aí a janela ficaria aberta para sempre, travando a distribuição
-    // seguinte. Recusar aqui trocaria uma perda de direito por um impasse.
-    //
-    // Fechar aqui é seguro **porque a trava de cadência já passou**: quem tinha
-    // direito teve a quinzena inteira para sacar. O que sobrou não some do
-    // fundo — continua no preço da cota de quem não sacou.
-    // -----------------------------------------------------------------------
     if ctx.accounts.vault.lucro_sacavel_restante > 0 {
         emit!(JanelaDeLucroEncerrada {
             nao_sacado: ctx.accounts.vault.lucro_sacavel_restante,
-            timestamp: now,
+            timestamp: now
         });
         ctx.accounts.vault.lucro_sacavel_restante = 0;
     }
 
-    // -----------------------------------------------------------------------
-    // A repartição — `D-F2-35`. **A ORDEM INVERTEU, e é o que faz 50 ser 50.**
-    // -----------------------------------------------------------------------
-    // Era: calcula a parte de CADA SÓCIO e multiplica por três. Com o campo por
-    // sócio, `5000/3 = 1666,67` não é inteiro — 1666 dava 49,98% e 1667 daria
-    // 50,01%. **Não existia valor que publicasse "50%" e cobrasse 50%.**
-    //
-    // Agora: calcula a parte DOS SÓCIOS de uma vez, a dos cotistas por
-    // diferença, e só então divide por três. `P × 5000 / 10000` é exato, e a
-    // parcela dos cotistas é o complemento exato.
-    //
-    // ⚠️ A SOBRA DA DIVISÃO POR TRÊS VAI PARA OS COTISTAS, e não para um sócio.
-    //
-    // São no máximo dois lamports por ciclo — e é justamente por ser pouco que
-    // precisa de regra: sobra sem dono declarado é o tipo de coisa que alguém
-    // "resolve" seis meses depois dando para quem estiver mais perto. Somada aos
-    // cotistas, o arredondamento fica a favor do fundo, como na D9.
-    // -----------------------------------------------------------------------
+    // 1 · o P, da gaveta, absorvido ate' o ultimo micro
+    let gaveta_key = ctx.accounts.gaveta.key();
+    let p = ctx.accounts.gaveta.amount;
+    crate::indice::absorver_no_cofre(&mut ctx.accounts.vault, &gaveta_key, p, supply)?;
+    require!(p == lucro_realizado, DomError::PDiferenteDoEsperado);
+    require!(p > 0, DomError::ZeroLucro);
+    require!(
+        ctx.accounts.vault.p_ciclo == p,
+        DomError::PConservacaoFalhou
+    );
+
+    // 2 · a mesa
     require!(
         ctx.accounts.vault.perf_fee_bps_total >= MIN_PERF_FEE_BPS_TOTAL,
         DomError::ParametroForaDoLimite
     );
-
     let parcela_socios = u64::try_from(
-        (lucro_realizado as u128)
+        (p as u128)
             .checked_mul(ctx.accounts.vault.perf_fee_bps_total as u128)
             .ok_or(DomError::MathOverflow)?
             .checked_div(BPS_DEN)
             .ok_or(DomError::MathOverflow)?,
     )
     .map_err(|_| error!(DomError::MathOverflow))?;
+    // `parcela_socios` e' a MESA inteira (taxa × P); as comissoes dos afiliados
+    // saem de dentro dela (J1) e o que sobra divide por tres — abaixo.
 
-    let parcela_por_socio = parcela_socios
-        .checked_div(NUM_SOCIOS as u64)
-        .ok_or(DomError::MathOverflow)?;
-
-    // O que a divisão por três deixou para trás volta para os cotistas.
-    let sobra = parcela_socios
-        .checked_sub(
-            parcela_por_socio
-                .checked_mul(NUM_SOCIOS as u64)
-                .ok_or(DomError::MathOverflow)?,
-        )
-        .ok_or(DomError::MathOverflow)?;
-
-    let parcela_cotistas = lucro_realizado
-        .checked_sub(parcela_socios)
+    // 4 · a mesa em cotas, ao NAV POS-diluicao: patrimonio − mesa, sobre o
+    // supply de antes. Cunhar ao NAV publicado (com o P dentro) daria a mesa
+    // cotas que, depois da propria cunhagem, valem menos que `mesa` — e o
+    // excedente ficaria com os cotistas (~0,1% na simulacao de 18 carteiras).
+    // E' o mesmo cuidado do contrato antigo ("as cotas dos socios saem ao NAV
+    // ja' ajustado, senao a conta nao fecha"). Esse preco e' o nav_fechamento:
+    // a janela e o acerto convertem por ele.
+    let mesa_por_cota = (parcela_socios as u128)
+        .checked_mul(NAV_SCALE as u128)
         .ok_or(DomError::MathOverflow)?
-        .checked_add(sobra)
+        .checked_div(supply as u128)
         .ok_or(DomError::MathOverflow)?;
-
-    // -----------------------------------------------------------------------
-    // O NAV pós-distribuição.
-    //
-    //   patrimonio_antes = supply × nav
-    //   nav_novo         = (patrimonio_antes + parcela_cotistas) / supply
-    //   cotas_por_socio  = parcela_por_socio / nav_novo
-    //
-    // As cotas dos sócios saem ao NAV **já subido**, senão a conta não fecha:
-    // emitir `60% de P` ao NAV antigo criaria cota de graça e abriria um buraco
-    // de exatamente `60% de P` no patrimônio.
-    //
-    // Confere: (supply + 3 × cotas) × nav_novo <= patrimonio_antes + P, com a
-    // diferença sendo só truncamento — a favor do cofre.
-    // -----------------------------------------------------------------------
-    let patrimonio_antes = usdc_from_shares(supply, nav)?;
-
-    let nav_novo = u64::try_from(
-        (patrimonio_antes as u128)
-            .checked_add(parcela_cotistas as u128)
-            .ok_or(DomError::MathOverflow)?
-            .checked_mul(NAV_SCALE as u128)
-            .ok_or(DomError::MathOverflow)?
-            .checked_div(supply as u128)
+    let nav_fechamento = u64::try_from(
+        (nav as u128)
+            .checked_sub(mesa_por_cota)
             .ok_or(DomError::MathOverflow)?,
     )
     .map_err(|_| error!(DomError::MathOverflow))?;
-    require!(nav_novo >= nav, DomError::InvalidNav);
-
-    // O delta é o direito por cota na janela. Congelado agora, e não recalculado
-    // no saque: o oráculo continua publicando durante a janela.
-    let delta_lucro_por_cota = nav_novo - nav;
-
-    // Truncado: cota de taxa a menos é lucro que fica com os cotistas (D9).
-    let cotas_por_socio = shares_from_usdc(parcela_por_socio, nav_novo)?;
-
-    // -----------------------------------------------------------------------
-    // O dinheiro entra ANTES de qualquer emissão de cota.
-    //
-    // Ordem deliberada: se a transferência falhar — saldo insuficiente na
-    // origem, conta congelada —, a transação inteira reverte e nenhuma cota de
-    // sócio foi emitida contra lucro que não chegou.
-    // -----------------------------------------------------------------------
-    transfer_checked(
-        CpiContext::new(
-            ctx.accounts.usdc_token_program.key(),
-            TransferChecked {
-                from: ctx.accounts.origem_usdc.to_account_info(),
-                mint: ctx.accounts.usdc_mint.to_account_info(),
-                to: ctx.accounts.treasury.to_account_info(),
-                authority: ctx.accounts.authority.to_account_info(),
-            },
-        ),
-        lucro_realizado,
-        ctx.accounts.usdc_mint.decimals,
-    )?;
+    require!(nav_fechamento > 0, DomError::InvalidNav);
+    // 6a · o ciclo vira ANTES da cunhagem: o acerto dos sócios (abaixo) tem de
+    // enxergar este fechamento — o ganho deles neste ciclo e a diluição desta
+    // mesa —, e a entrada das cotas novas é ao índice de agora.
+    {
+        let vault = &mut ctx.accounts.vault;
+        let passo = (parcela_socios as u128)
+            .checked_mul(INDICE_SCALE)
+            .ok_or(DomError::MathOverflow)?
+            .checked_div(supply as u128)
+            .ok_or(DomError::MathOverflow)?;
+        vault.indice_diluicao = vault
+            .indice_diluicao
+            .checked_add(passo)
+            .ok_or(DomError::MathOverflow)?;
+        vault.indice_ciclo_anterior = vault.indice_ciclo;
+        vault.indice_ciclo = vault.indice_p;
+        vault.nav_fechamento = nav_fechamento;
+    }
 
     let vault_bump = ctx.accounts.vault.bump;
     let vault_seeds: &[&[&[u8]]] = &[&[VAULT_SEED, &[vault_bump]]];
+    let socios = ctx.accounts.vault.socios;
+    let taxa_bps = ctx.accounts.vault.perf_fee_bps_total;
+    let mut cunhadas_total: u64 = 0;
 
-    let destinos = [
+    // 3 · (J1) os afiliados: comissao_i = ganho_indicado × taxa_mesa × bps.
+    // O ganho do indicado e' o do ciclo que acabou de fechar — pelo indice,
+    // com as cotas que ele tem agora (a mesma base do acerto dele). A comissao
+    // sai da mesa: o cotista nao paga um micro a mais.
+    require!(
+        ctx.remaining_accounts.len() >= NUM_SOCIOS + afiliados.len() * CONTAS_POR_AFILIADO,
+        DomError::AfiliadoInvalido
+    );
+    let mut comissoes_total: u64 = 0;
+    for (n, linha) in afiliados.iter().enumerate() {
+        require!(
+            linha.bps >= 1 && linha.bps <= MAX_AFILIADO_BPS,
+            DomError::AfiliadoInvalido
+        );
+        require!(linha.indicado != linha.afiliado, DomError::AfiliadoInvalido);
+        require!(
+            !afiliados[..n].iter().any(|a| a.indicado == linha.indicado),
+            DomError::AfiliadoRepetido
+        );
+        let base = NUM_SOCIOS + n * CONTAS_POR_AFILIADO;
+        let indicado_dom =
+            InterfaceAccount::<TokenAccount>::try_from(&ctx.remaining_accounts[base])?;
+        require!(
+            indicado_dom.mint == ctx.accounts.dom_mint.key()
+                && indicado_dom.owner == linha.indicado,
+            DomError::AfiliadoInvalido
+        );
+        let indicado_posicao =
+            carregar_posicao(&ctx.remaining_accounts[base + 1], &linha.indicado, false)?;
+        let afiliado_dom =
+            InterfaceAccount::<TokenAccount>::try_from(&ctx.remaining_accounts[base + 2])?;
+        require!(
+            afiliado_dom.mint == ctx.accounts.dom_mint.key()
+                && afiliado_dom.owner == linha.afiliado
+                && ctx.remaining_accounts[base + 2].is_writable,
+            DomError::AfiliadoInvalido
+        );
+        let mut afiliado_posicao =
+            carregar_posicao(&ctx.remaining_accounts[base + 3], &linha.afiliado, true)?;
+
+        let v = &ctx.accounts.vault;
+        let ganho_indicado = crate::indice::ganho(
+            indicado_dom.amount,
+            indicado_posicao.indice_entrada,
+            v.indice_ciclo_anterior,
+            v.indice_ciclo,
+        )?;
+        let comissao = u64::try_from(
+            (ganho_indicado as u128)
+                .checked_mul(taxa_bps as u128)
+                .ok_or(DomError::MathOverflow)?
+                .checked_mul(linha.bps as u128)
+                .ok_or(DomError::MathOverflow)?
+                / (BPS_DEN * BPS_DEN),
+        )
+        .map_err(|_| error!(DomError::MathOverflow))?;
+        comissoes_total = comissoes_total
+            .checked_add(comissao)
+            .ok_or(DomError::MathOverflow)?;
+        require!(comissoes_total <= parcela_socios, DomError::MathOverflow);
+
+        let cotas = cunhar_com_acerto(
+            v,
+            &mut afiliado_posicao,
+            &linha.afiliado,
+            afiliado_dom.amount,
+            &ctx.remaining_accounts[base + 2],
+            shares_from_usdc(comissao, nav_fechamento)?,
+            nav_fechamento,
+            &ctx.accounts.dom_mint.to_account_info(),
+            &ctx.accounts.dom_token_program,
+            vault_seeds,
+        )?;
+        cunhadas_total = cunhadas_total
+            .checked_add(cotas)
+            .ok_or(DomError::MathOverflow)?;
+        afiliado_posicao.exit(&crate::ID)?;
+        emit!(ComissaoDeAfiliado {
+            indicado: linha.indicado,
+            afiliado: linha.afiliado,
+            bps: linha.bps,
+            ganho_indicado,
+            comissao_usdc: comissao,
+            cotas,
+            timestamp: now,
+        });
+    }
+
+    // 4 · o resto da mesa para os socios, com o acerto de cada um compensado
+    // na cunhagem (J7 sem assinatura): cunha `cotas_por_socio + credito − debito`.
+    // Se o debito passar disso — socio segurando mais de um terco do fundo —
+    // ele assina `acertar` antes e o fechamento e' repetido.
+    let mesa_dos_socios = parcela_socios - comissoes_total;
+    let parcela_por_socio = mesa_dos_socios / NUM_SOCIOS as u64;
+    let sobra = mesa_dos_socios - parcela_por_socio * (NUM_SOCIOS as u64); // fica com os cotistas (D9)
+    let parcela_cotistas = p - parcela_socios + sobra;
+    let cotas_por_socio = shares_from_usdc(parcela_por_socio, nav_fechamento)?;
+    let contas = [
         ctx.accounts.socio0_dom.to_account_info(),
         ctx.accounts.socio1_dom.to_account_info(),
         ctx.accounts.socio2_dom.to_account_info(),
     ];
-
-    if cotas_por_socio > 0 {
-        for destino in destinos.iter() {
-            // -----------------------------------------------------------------
-            // **Sem checagem de cap aqui** (D3.1/T14) — como no
-            // `accrue_performance` que saiu. O cap de 25% protege a fila D+30 de
-            // um cotista dominante; `fee_share` não usa a fila.
-            // -----------------------------------------------------------------
-            mint_to(
-                CpiContext::new_with_signer(
-                    ctx.accounts.dom_token_program.key(),
-                    MintTo {
-                        mint: ctx.accounts.dom_mint.to_account_info(),
-                        to: destino.clone(),
-                        authority: ctx.accounts.vault.to_account_info(),
-                    },
-                    vault_seeds,
-                ),
-                cotas_por_socio,
-            )?;
-        }
+    let saldos = [
+        ctx.accounts.socio0_dom.amount,
+        ctx.accounts.socio1_dom.amount,
+        ctx.accounts.socio2_dom.amount,
+    ];
+    for i in 0..NUM_SOCIOS {
+        let mut posicao = carregar_posicao(&ctx.remaining_accounts[i], &socios[i], true)?;
+        let cotas = cunhar_com_acerto(
+            &ctx.accounts.vault,
+            &mut posicao,
+            &socios[i],
+            saldos[i],
+            &contas[i],
+            cotas_por_socio,
+            nav_fechamento,
+            &ctx.accounts.dom_mint.to_account_info(),
+            &ctx.accounts.dom_token_program,
+            vault_seeds,
+        )?;
+        cunhadas_total = cunhadas_total
+            .checked_add(cotas)
+            .ok_or(DomError::MathOverflow)?;
+        posicao.exit(&crate::ID)?;
     }
-
     let bumps = [
         ctx.bumps.socio0_ledger,
         ctx.bumps.socio1_ledger,
         ctx.bumps.socio2_ledger,
     ];
-    let socios = ctx.accounts.vault.socios;
     let livros = [
         &mut ctx.accounts.socio0_ledger,
         &mut ctx.accounts.socio1_ledger,
@@ -349,46 +415,134 @@ pub fn handle_deposit_especial(ctx: Context<DepositEspecial>, lucro_realizado: u
             .ok_or(DomError::MathOverflow)?;
     }
 
+    // 5 · o P sai da gaveta para o caixa — a dona da gaveta assina (o vault 1,
+    // por dentro da proposta)
+    transfer_checked(
+        CpiContext::new(
+            ctx.accounts.usdc_token_program.key(),
+            TransferChecked {
+                from: ctx.accounts.gaveta.to_account_info(),
+                mint: ctx.accounts.usdc_mint.to_account_info(),
+                to: ctx.accounts.treasury.to_account_info(),
+                authority: ctx.accounts.gaveta_owner.to_account_info(),
+            },
+        ),
+        p,
+        ctx.accounts.usdc_mint.decimals,
+    )?;
+
+    // 6 · o ciclo vira
     let vault = &mut ctx.accounts.vault;
-    vault.nav = nav_novo;
-    vault.delta_lucro_por_cota = delta_lucro_por_cota;
-    // Abre a janela. O teto é a parcela dos cotistas — nunca `supply × delta`,
-    // que por truncamento pode ser um micro-USDC menor e deixaria o último a
-    // sacar sem o dele.
-    // -----------------------------------------------------------------------
-    // ⚠️ O BOLO É O QUE OS COTISTAS CONSEGUEM SACAR, e não a parcela deles.
-    // -----------------------------------------------------------------------
-    // O direito individual é `cotas × delta`, e `delta = nav_novo − nav` já
-    // passou por uma divisão truncada por `supply`. A soma de todos os direitos
-    // é `supply × delta`, que pode ser ALGUNS LAMPORTS MENOR que a
-    // `parcela_cotistas` que subiu o NAV.
-    //
-    // Gravar a parcela aqui deixava essa diferença **presa**: ninguém tem
-    // direito a ela, o bolo nunca chega a zero, e `lucro_sacavel_restante > 0` é
-    // o que mantém a JANELA ABERTA — que recusa aporte e transferência de cota.
-    // Dois lamports de truncamento fechariam o fundo até a distribuição
-    // seguinte.
-    //
-    // Descoberto pelo `D-F2-35`: com a repartição 60/40 as fixtures davam contas
-    // redondas e a diferença era sempre zero. O defeito era latente desde o
-    // início e nenhum ensaio o alcançava — só mudou o `P` e ele apareceu.
-    //
-    // A diferença fica na treasury, sem dono: o patrimônio passa a ser
-    // levemente MAIOR que `supply × nav`, que é a direção segura.
-    // -----------------------------------------------------------------------
-    vault.lucro_sacavel_restante = usdc_from_shares(supply, delta_lucro_por_cota)?;
+    vault.gaveta_saldo_visto = 0;
+    vault.p_ciclo = 0;
+    vault.delta_lucro_por_cota = 0; // legado: a janela passa a ser pelo indice (J5)
+    vault.lucro_sacavel_restante = parcela_cotistas;
     vault.ultima_distribuicao_ts = now;
+    // o piso depois da cunhagem: (campo + caixa com o P) ÷ supply novo
+    {
+        let caixa = ctx
+            .accounts
+            .treasury
+            .amount
+            .checked_add(p)
+            .ok_or(DomError::MathOverflow)?;
+        let supply_novo = supply
+            .checked_add(cunhadas_total)
+            .ok_or(DomError::MathOverflow)?;
+        let base = (vault.deployed_usdc as u128)
+            .checked_add(caixa as u128)
+            .ok_or(DomError::MathOverflow)?;
+        vault.nav_piso = u64::try_from(
+            base.checked_mul(NAV_SCALE as u128)
+                .ok_or(DomError::MathOverflow)?
+                / supply_novo as u128,
+        )
+        .map_err(|_| error!(DomError::MathOverflow))?;
+    }
 
     emit!(LucroDistribuido {
-        lucro_realizado,
+        lucro_realizado: p,
         parcela_cotistas,
         parcela_socios,
         nav_antes: nav,
-        nav_depois: nav_novo,
-        delta_lucro_por_cota,
+        nav_depois: nav,
+        delta_lucro_por_cota: 0,
         cotas_por_socio,
+        comissoes_afiliados: comissoes_total,
         timestamp: now,
     });
 
     Ok(())
+}
+
+/// Lê uma `PosicaoDoCotista` de `remaining_accounts`: PDA certa, dono certo,
+/// gravável quando vai ser regravada.
+fn carregar_posicao<'info>(
+    info: &'info AccountInfo<'info>,
+    owner: &Pubkey,
+    gravavel: bool,
+) -> Result<Account<'info, PosicaoDoCotista>> {
+    let (esperada, _) = Pubkey::find_program_address(&[POSICAO_SEED, owner.as_ref()], &crate::ID);
+    require_keys_eq!(info.key(), esperada, DomError::PosicaoDoCotistaAusente);
+    require!(
+        !gravavel || info.is_writable,
+        DomError::PosicaoDoCotistaAusente
+    );
+    let posicao: Account<PosicaoDoCotista> = Account::try_from(info)?;
+    require_keys_eq!(posicao.owner, *owner, DomError::PosicaoDoCotistaAusente);
+    Ok(posicao)
+}
+
+/// Cunha `cotas_base` para uma carteira que NÃO assina o fechamento (sócio,
+/// afiliado), compensando o acerto pendente dela na própria cunhagem: crédito
+/// cunha a mais, débito cunha a menos; débito maior que a cunhagem é
+/// `AcertoPendente` (o dono assina `acertar` antes). Registra a entrada ao
+/// índice de agora e anda os odômetros. Devolve o que cunhou.
+#[allow(clippy::too_many_arguments)]
+fn cunhar_com_acerto<'info>(
+    vault: &Account<'info, Vault>,
+    posicao: &mut PosicaoDoCotista,
+    owner: &Pubkey,
+    cotas_antes: u64,
+    conta_info: &AccountInfo<'info>,
+    cotas_base: u64,
+    nav_fechamento: u64,
+    dom_mint: &AccountInfo<'info>,
+    dom_token_program: &Interface<'info, TokenInterface>,
+    vault_seeds: &[&[&[u8]]],
+) -> Result<u64> {
+    let mut cunhar = cotas_base;
+    if !crate::indice::acertada(posicao, vault) {
+        let a = crate::indice::acerto_de(cotas_antes, vault.perf_fee_bps_total, posicao, vault)?;
+        if a.pago_micro > a.devido_micro {
+            cunhar = cunhar
+                .checked_add(shares_from_usdc(
+                    a.pago_micro - a.devido_micro,
+                    nav_fechamento,
+                )?)
+                .ok_or(DomError::MathOverflow)?;
+        } else if a.devido_micro > a.pago_micro {
+            let debito = shares_from_usdc(a.devido_micro - a.pago_micro, nav_fechamento)?;
+            cunhar = cunhar.checked_sub(debito).ok_or(DomError::AcertoPendente)?;
+        }
+    }
+    if cunhar > 0 {
+        mint_to(
+            CpiContext::new_with_signer(
+                dom_token_program.key(),
+                MintTo {
+                    mint: dom_mint.clone(),
+                    to: conta_info.clone(),
+                    authority: vault.to_account_info(),
+                },
+                vault_seeds,
+            ),
+            cunhar,
+        )?;
+    }
+    let bump = posicao.bump;
+    crate::indice::registrar_entrada(posicao, owner, bump, cotas_antes, cunhar, vault.indice_p)?;
+    posicao.indice_diluicao_visto = vault.indice_diluicao;
+    posicao.indice_p_acertado = vault.indice_ciclo;
+    Ok(cunhar)
 }

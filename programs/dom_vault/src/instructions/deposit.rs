@@ -4,7 +4,7 @@ use {
         error::DomError,
         events::Deposited,
         math::{require_nav_fresco, shares_from_usdc},
-        state::Vault,
+        state::{PosicaoDoCotista, Vault},
         whitelist::require_whitelisted,
     },
     anchor_lang::prelude::*,
@@ -19,8 +19,10 @@ use {
 /// `Access violation` — não é advertência cosmética.
 #[derive(Accounts)]
 pub struct Deposit<'info> {
+    #[account(mut)]
     pub depositor: Signer<'info>,
     #[account(
+        mut,
         seeds = [VAULT_SEED],
         bump = vault.bump,
         has_one = dom_mint @ DomError::UnknownMint,
@@ -31,6 +33,20 @@ pub struct Deposit<'info> {
     pub vault: Box<Account<'info, Vault>>,
     /// CHECK: validada por `require_whitelisted` — ver `whitelist.rs`.
     pub depositor_whitelist: UncheckedAccount<'info>,
+    /// Upgrade J: a gaveta (ATA de USDC do vault 1). Lida ANTES de cunhar, para
+    /// que o P que ja' chegou nao seja dividido com quem entra agora.
+    #[account(constraint = gaveta.key() == vault.gaveta_usdc @ DomError::GavetaErrada)]
+    pub gaveta: Box<InterfaceAccount<'info, TokenAccount>>,
+    /// Upgrade J: a posicao desta carteira no indice de P.
+    #[account(
+        init_if_needed,
+        payer = depositor,
+        space = 8 + PosicaoDoCotista::INIT_SPACE,
+        seeds = [POSICAO_SEED, depositor.key().as_ref()],
+        bump,
+    )]
+    pub posicao: Box<Account<'info, PosicaoDoCotista>>,
+    pub system_program: Program<'info, System>,
 
     #[account(mut)]
     pub dom_mint: Box<InterfaceAccount<'info, Mint>>,
@@ -146,6 +162,34 @@ pub fn handle_deposit(ctx: Context<Deposit>, usdc_amount: u64) -> Result<()> {
         agora,
         ctx.accounts.vault.max_nav_staleness,
     )?;
+    // -----------------------------------------------------------------------
+    // Upgrade J (D-F2-43 §2): a gaveta e' lida ANTES de cunhar. O P que ja'
+    // chegou sobe o indice com o supply de AGORA — quem entra neste aporte nao
+    // divide P que caiu antes dele. Depois do mint, a posicao desta carteira
+    // recebe o lote novo ao indice de agora (media ponderada).
+    // -----------------------------------------------------------------------
+    crate::indice::absorver_no_cofre(
+        &mut ctx.accounts.vault,
+        &ctx.accounts.gaveta.key(),
+        ctx.accounts.gaveta.amount,
+        ctx.accounts.dom_mint.supply,
+    )?;
+    // J7: a carteira acerta a taxa dos ciclos fechados ANTES de receber o lote
+    // novo — o dono assina, entao credito e debito passam. So' depois o supply
+    // e o saldo dela sao lidos.
+    crate::indice::acertar_com_cpi(
+        &mut ctx.accounts.vault,
+        &mut ctx.accounts.posicao,
+        &ctx.accounts.depositor_dom,
+        &ctx.accounts.dom_mint,
+        &ctx.accounts.depositor.to_account_info(),
+        true,
+        &ctx.accounts.dom_token_program,
+    )?;
+    ctx.accounts.depositor_dom.reload()?;
+    ctx.accounts.dom_mint.reload()?;
+    let cotas_antes = ctx.accounts.depositor_dom.amount;
+
     let nav = ctx.accounts.vault.nav;
     let shares = shares_from_usdc(usdc_amount, nav)?;
     // Aporte que, ao NAV corrente, não compra nem uma unidade de cota seria
@@ -182,6 +226,15 @@ pub fn handle_deposit(ctx: Context<Deposit>, usdc_amount: u64) -> Result<()> {
             vault_seeds,
         ),
         shares,
+    )?;
+    let bump_posicao = ctx.bumps.posicao;
+    crate::indice::registrar_entrada(
+        &mut ctx.accounts.posicao,
+        &depositor,
+        bump_posicao,
+        cotas_antes,
+        shares,
+        ctx.accounts.vault.indice_p,
     )?;
 
     // -----------------------------------------------------------------------

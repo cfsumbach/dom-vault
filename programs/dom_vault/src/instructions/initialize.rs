@@ -189,6 +189,17 @@ pub fn handle_initialize(
     vault.nav_bound_pct = NAV_BOUND_NUM as u16;
     vault.cap_pct = CAP_NUM as u16;
     vault.perf_fee_bps_total = PERF_FEE_BPS_TOTAL;
+    // Upgrade J: a gaveta nasce vazia — a mesa a aponta por `set_gaveta_usdc`.
+    // Indices e saldo visto zerados; o piso nasce no NAV de partida.
+    vault.gaveta_usdc = Pubkey::default();
+    vault.indice_p = 0;
+    vault.indice_ciclo = 0;
+    vault.indice_ciclo_anterior = 0;
+    vault.gaveta_saldo_visto = 0;
+    vault.p_ciclo = 0;
+    vault.nav_piso = vault.nav;
+    vault.nav_fechamento = 0;
+    vault.indice_diluicao = 0;
     vault.layout_version = LAYOUT_VERSION;
     // Allowlist **vazia** na gênese: `deploy_capital` não tem para onde mandar
     // antes de a mesa registrar destino por proposta. Capital novo nasce preso.

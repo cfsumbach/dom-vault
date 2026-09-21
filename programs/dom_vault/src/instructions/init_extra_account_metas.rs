@@ -93,7 +93,93 @@ fn extra_account_metas() -> Result<Vec<ExtraAccountMeta>> {
             false,
             false,
         )?,
+        // 8 — Upgrade J: a POSICAO da carteira de destino no indice de P,
+        // gravavel: o lote recebido entra pela media ponderada. Tem de existir
+        // (`abrir_posicao` ou um aporte anterior); destino isento (escrow) passa
+        // uma conta vazia e o handler nao a toca.
+        ExtraAccountMeta::new_with_seeds(
+            &[
+                Seed::Literal {
+                    bytes: POSICAO_SEED.to_vec(),
+                },
+                Seed::AccountData {
+                    account_index: IX_DESTINATION,
+                    data_index: TOKEN_ACCOUNT_OWNER_OFFSET,
+                    length: PUBKEY_LEN,
+                },
+            ],
+            false,
+            true,
+        )?,
+        // 9 — J7: a POSICAO da carteira de ORIGEM, gravavel: o hook exige
+        // que a origem esteja acertada (dono assinou `acertar` antes) ou com
+        // liquido zero — e nesse caso anda os odometros dela.
+        ExtraAccountMeta::new_with_seeds(
+            &[
+                Seed::Literal {
+                    bytes: POSICAO_SEED.to_vec(),
+                },
+                Seed::AccountData {
+                    account_index: IX_SOURCE,
+                    data_index: TOKEN_ACCOUNT_OWNER_OFFSET,
+                    length: PUBKEY_LEN,
+                },
+            ],
+            false,
+            true,
+        )?,
     ])
+}
+
+/// Upgrade J: a lista viva de mainnet tem tres contas; passa a quatro. A
+/// autoridade (proposta 2/3) cresce a conta e regrava a lista. TEMPORARIA —
+/// sai no upgrade seguinte, junto com `migrar_vault_indice`.
+#[derive(Accounts)]
+pub struct AtualizarExtraAccountMetaList<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub authority: Signer<'info>,
+    #[account(
+        seeds = [VAULT_SEED],
+        bump = vault.bump,
+        has_one = authority @ DomError::Unauthorized,
+        constraint = vault.dom_mint == mint.key() @ DomError::UnknownMint,
+    )]
+    pub vault: Account<'info, Vault>,
+    pub mint: InterfaceAccount<'info, Mint>,
+    /// CHECK: a lista existente, conferida pelas seeds.
+    #[account(mut, seeds = [EXTRA_ACCOUNT_METAS_SEED, mint.key().as_ref()], bump)]
+    pub extra_account_meta_list: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+pub fn handle_atualizar_extra_account_meta_list(
+    ctx: Context<AtualizarExtraAccountMetaList>,
+) -> Result<()> {
+    let list_info = ctx.accounts.extra_account_meta_list.to_account_info();
+    let metas = extra_account_metas()?;
+    let space = ExtraAccountMetaList::size_of(metas.len())?;
+    let minimo = Rent::get()?.minimum_balance(space);
+    let atual = list_info.lamports();
+    if minimo > atual {
+        system_program::transfer(
+            CpiContext::new(
+                system_program::ID,
+                system_program::Transfer {
+                    from: ctx.accounts.payer.to_account_info(),
+                    to: list_info.clone(),
+                },
+            ),
+            minimo - atual,
+        )?;
+    }
+    list_info.resize(space)?;
+    let mut data = list_info.try_borrow_mut_data()?;
+    // `update`, nao `init`: a lista viva ja' tem a entrada TLV do `Execute` —
+    // `init` recusa com TypeAlreadyExists (ensaio em devnet, 21/09, proposta
+    // #81 revertida inteira). `update` realoca a entrada para o tamanho novo.
+    ExtraAccountMetaList::update::<ExecuteInstruction>(&mut data, &metas)?;
+    Ok(())
 }
 
 pub fn handle_initialize_extra_account_meta_list(

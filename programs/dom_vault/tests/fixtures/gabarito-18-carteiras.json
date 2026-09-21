@@ -1,0 +1,335 @@
+{
+  "_fonte": "gerado por programs/dom_vault/tests/gabarito.rs a partir de indice.rs e math.rs — nao editar a mao",
+  "capital_micro": 166100000000,
+  "carteiras": [
+    {
+      "cotas_micro": 55000000000,
+      "ganho_micro": 4482332177,
+      "indice_entrada": "0",
+      "nome": "Egnon",
+      "parte_cotista_micro": 2241166089,
+      "parte_mesa_micro": 2241166088
+    },
+    {
+      "cotas_micro": 20000000000,
+      "ganho_micro": 1629938973,
+      "indice_entrada": "0",
+      "nome": "Filipe",
+      "parte_cotista_micro": 814969487,
+      "parte_mesa_micro": 814969486
+    },
+    {
+      "cotas_micro": 12000000000,
+      "ganho_micro": 977963384,
+      "indice_entrada": "0",
+      "nome": "Leonardo",
+      "parte_cotista_micro": 488981692,
+      "parte_mesa_micro": 488981692
+    },
+    {
+      "cotas_micro": 9000000000,
+      "ganho_micro": 733472538,
+      "indice_entrada": "0",
+      "nome": "Djan",
+      "parte_cotista_micro": 366736269,
+      "parte_mesa_micro": 366736269
+    },
+    {
+      "cotas_micro": 7836737252,
+      "ganho_micro": 475404814,
+      "indice_entrada": "20833333333333333",
+      "nome": "Ariel",
+      "parte_cotista_micro": 237702407,
+      "parte_mesa_micro": 237702407
+    },
+    {
+      "cotas_micro": 6367349017,
+      "ganho_micro": 386266411,
+      "indice_entrada": "20833333333333333",
+      "nome": "Gisleno",
+      "parte_cotista_micro": 193133206,
+      "parte_mesa_micro": 193133205
+    },
+    {
+      "cotas_micro": 4897960783,
+      "ganho_micro": 297128008,
+      "indice_entrada": "20833333333333333",
+      "nome": "Silvio",
+      "parte_cotista_micro": 148564004,
+      "parte_mesa_micro": 148564004
+    },
+    {
+      "cotas_micro": 489796078,
+      "ganho_micro": 29712800,
+      "indice_entrada": "20833333333333333",
+      "nome": "Rosane",
+      "parte_cotista_micro": 14856400,
+      "parte_mesa_micro": 14856400
+    },
+    {
+      "cotas_micro": 1450945000,
+      "ganho_micro": 69191099,
+      "indice_entrada": "33810027530630885",
+      "nome": "Raony",
+      "parte_cotista_micro": 34595550,
+      "parte_mesa_micro": 34595549
+    },
+    {
+      "cotas_micro": 773837333,
+      "ganho_micro": 36901919,
+      "indice_entrada": "33810027530630885",
+      "nome": "Abraao",
+      "parte_cotista_micro": 18450960,
+      "parte_mesa_micro": 18450959
+    },
+    {
+      "cotas_micro": 290189000,
+      "ganho_micro": 13838219,
+      "indice_entrada": "33810027530630885",
+      "nome": "Hugo",
+      "parte_cotista_micro": 6919110,
+      "parte_mesa_micro": 6919109
+    },
+    {
+      "cotas_micro": 14218319451,
+      "ganho_micro": 377064731,
+      "indice_entrada": "54977307432022090",
+      "nome": "Edson",
+      "parte_cotista_micro": 188532366,
+      "parte_mesa_micro": 188532365
+    },
+    {
+      "cotas_micro": 6635215744,
+      "ganho_micro": 175963541,
+      "indice_entrada": "54977307432022090",
+      "nome": "Ismar",
+      "parte_cotista_micro": 87981771,
+      "parte_mesa_micro": 87981770
+    },
+    {
+      "cotas_micro": 3791551853,
+      "ganho_micro": 100550594,
+      "indice_entrada": "54977307432022090",
+      "nome": "Rafael",
+      "parte_cotista_micro": 50275297,
+      "parte_mesa_micro": 50275297
+    },
+    {
+      "cotas_micro": 2341731719,
+      "ganho_micro": 32574312,
+      "indice_entrada": "67586596561955660",
+      "nome": "Victor",
+      "parte_cotista_micro": 16287156,
+      "parte_mesa_micro": 16287156
+    },
+    {
+      "cotas_micro": 9366926879,
+      "ganho_micro": 130297251,
+      "indice_entrada": "67586596561955660",
+      "nome": "Marcos",
+      "parte_cotista_micro": 65148626,
+      "parte_mesa_micro": 65148625
+    },
+    {
+      "cotas_micro": 2789776399,
+      "ganho_micro": 17133073,
+      "indice_entrada": "75355570073078382",
+      "nome": "Tatiane",
+      "parte_cotista_micro": 8566537,
+      "parte_mesa_micro": 8566536
+    },
+    {
+      "cotas_micro": 5579552798,
+      "ganho_micro": 34266146,
+      "indice_entrada": "75355570073078382",
+      "nome": "Bruno",
+      "parte_cotista_micro": 17133073,
+      "parte_mesa_micro": 17133073
+    }
+  ],
+  "indice_p_final": "81496948687668840",
+  "indice_scale": "1000000000000000000",
+  "levas": [
+    {
+      "aportes": [
+        {
+          "cotas_micro": 55000000000,
+          "indice_entrada": "0",
+          "nav_micro": 1000000,
+          "nome": "Egnon",
+          "usd_micro": 55000000000
+        },
+        {
+          "cotas_micro": 20000000000,
+          "indice_entrada": "0",
+          "nav_micro": 1000000,
+          "nome": "Filipe",
+          "usd_micro": 20000000000
+        },
+        {
+          "cotas_micro": 12000000000,
+          "indice_entrada": "0",
+          "nav_micro": 1000000,
+          "nome": "Leonardo",
+          "usd_micro": 12000000000
+        },
+        {
+          "cotas_micro": 9000000000,
+          "indice_entrada": "0",
+          "nav_micro": 1000000,
+          "nome": "Djan",
+          "usd_micro": 9000000000
+        }
+      ],
+      "indice_p_depois": "20833333333333333",
+      "nav_micro": 1000000,
+      "p_micro": 2000000000,
+      "supply_depois_micro": 96000000000
+    },
+    {
+      "aportes": [
+        {
+          "cotas_micro": 7836737252,
+          "indice_entrada": "20833333333333333",
+          "nav_micro": 1020833,
+          "nome": "Ariel",
+          "usd_micro": 8000000000
+        },
+        {
+          "cotas_micro": 6367349017,
+          "indice_entrada": "20833333333333333",
+          "nav_micro": 1020833,
+          "nome": "Gisleno",
+          "usd_micro": 6500000000
+        },
+        {
+          "cotas_micro": 4897960783,
+          "indice_entrada": "20833333333333333",
+          "nav_micro": 1020833,
+          "nome": "Silvio",
+          "usd_micro": 5000000000
+        },
+        {
+          "cotas_micro": 489796078,
+          "indice_entrada": "20833333333333333",
+          "nav_micro": 1020833,
+          "nome": "Rosane",
+          "usd_micro": 500000000
+        }
+      ],
+      "indice_p_depois": "33810027530630885",
+      "nav_micro": 1020833,
+      "p_micro": 1500000000,
+      "supply_depois_micro": 115591843130
+    },
+    {
+      "aportes": [
+        {
+          "cotas_micro": 1450945000,
+          "indice_entrada": "33810027530630885",
+          "nav_micro": 1033809,
+          "nome": "Raony",
+          "usd_micro": 1500000000
+        },
+        {
+          "cotas_micro": 773837333,
+          "indice_entrada": "33810027530630885",
+          "nav_micro": 1033809,
+          "nome": "Abraao",
+          "usd_micro": 800000000
+        },
+        {
+          "cotas_micro": 290189000,
+          "indice_entrada": "33810027530630885",
+          "nav_micro": 1033809,
+          "nome": "Hugo",
+          "usd_micro": 300000000
+        }
+      ],
+      "indice_p_depois": "54977307432022090",
+      "nav_micro": 1033809,
+      "p_micro": 2500000000,
+      "supply_depois_micro": 118106814463
+    },
+    {
+      "aportes": [
+        {
+          "cotas_micro": 14218319451,
+          "indice_entrada": "54977307432022090",
+          "nav_micro": 1054977,
+          "nome": "Edson",
+          "usd_micro": 15000000000
+        },
+        {
+          "cotas_micro": 6635215744,
+          "indice_entrada": "54977307432022090",
+          "nav_micro": 1054977,
+          "nome": "Ismar",
+          "usd_micro": 7000000000
+        },
+        {
+          "cotas_micro": 3791551853,
+          "indice_entrada": "54977307432022090",
+          "nav_micro": 1054977,
+          "nome": "Rafael",
+          "usd_micro": 4000000000
+        }
+      ],
+      "indice_p_depois": "67586596561955660",
+      "nav_micro": 1054977,
+      "p_micro": 1800000000,
+      "supply_depois_micro": 142751901511
+    },
+    {
+      "aportes": [
+        {
+          "cotas_micro": 2341731719,
+          "indice_entrada": "67586596561955660",
+          "nav_micro": 1067586,
+          "nome": "Victor",
+          "usd_micro": 2500000000
+        },
+        {
+          "cotas_micro": 9366926879,
+          "indice_entrada": "67586596561955660",
+          "nav_micro": 1067586,
+          "nome": "Marcos",
+          "usd_micro": 10000000000
+        }
+      ],
+      "indice_p_depois": "75355570073078382",
+      "nav_micro": 1067586,
+      "p_micro": 1200000000,
+      "supply_depois_micro": 154460560109
+    },
+    {
+      "aportes": [
+        {
+          "cotas_micro": 2789776399,
+          "indice_entrada": "75355570073078382",
+          "nav_micro": 1075355,
+          "nome": "Tatiane",
+          "usd_micro": 3000000000
+        },
+        {
+          "cotas_micro": 5579552798,
+          "indice_entrada": "75355570073078382",
+          "nav_micro": 1075355,
+          "nome": "Bruno",
+          "usd_micro": 6000000000
+        }
+      ],
+      "indice_p_depois": "81496948687668840",
+      "nav_micro": 1075355,
+      "p_micro": 1000000000,
+      "supply_depois_micro": 162829889306
+    }
+  ],
+  "nav_genesis_micro": 1000000,
+  "p_total_micro": 10000000000,
+  "regra": "D-F2-43 §2 — indice de P por cota (reward-per-share)",
+  "residuo_micro": 10,
+  "soma_ganho_micro": 9999999990,
+  "supply_final_micro": 162829889306,
+  "taxa_mesa_bps": 5000
+}

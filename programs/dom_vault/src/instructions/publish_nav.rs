@@ -4,6 +4,7 @@ use {
         state::Vault,
     },
     anchor_lang::prelude::*,
+    anchor_spl::token_interface::{Mint, TokenAccount},
 };
 
 /// Publica o NAV do fundo, com hash de atestação e timestamp.
@@ -36,8 +37,18 @@ pub struct PublishNav<'info> {
         mut,
         seeds = [VAULT_SEED],
         bump = vault.bump,
+        has_one = treasury @ DomError::InvalidTreasury,
     )]
     pub vault: Account<'info, Vault>,
+    /// Upgrade J: a gaveta. A publicacao absorve o P novo no indice e recalcula
+    /// o piso — o oraculo passa a carregar a conta, e so' ela.
+    #[account(constraint = gaveta.key() == vault.gaveta_usdc @ DomError::GavetaErrada)]
+    pub gaveta: Box<InterfaceAccount<'info, TokenAccount>>,
+    /// Upgrade J: o caixa do cofre, para o piso = (campo + caixa + gaveta) ÷ supply.
+    pub treasury: Box<InterfaceAccount<'info, TokenAccount>>,
+    /// Upgrade J: o supply, para o indice e o piso.
+    #[account(address = vault.dom_mint @ DomError::UnknownMint)]
+    pub dom_mint: Box<InterfaceAccount<'info, Mint>>,
 }
 
 pub fn handle_publish_nav(
@@ -126,6 +137,39 @@ pub fn handle_publish_nav(
     // conseguiria. Proposta dentro do limite é publicação comum.
     let pela_valvula =
         !pelo_oraculo && !nav_dentro_do_bound(nav_anterior, nav, vault.nav_bound_pct);
+
+    // -----------------------------------------------------------------------
+    // Upgrade J (D-F2-43 §2 e §3): a gaveta e' absorvida no indice e o piso e'
+    // recalculado ANTES de aceitar o NAV. O piso = (capital no campo + caixa +
+    // P na gaveta) ÷ supply so' sobe dentro do ciclo; NAV bruto abaixo dele e'
+    // recusado — foi o que faltou em 20/09, quando o P saiu do preco por 20 h.
+    // -----------------------------------------------------------------------
+    let supply = ctx.accounts.dom_mint.supply;
+    let gaveta_saldo = ctx.accounts.gaveta.amount;
+    let caixa = ctx.accounts.treasury.amount;
+    let gaveta_key = ctx.accounts.gaveta.key();
+    crate::indice::absorver_no_cofre(vault, &gaveta_key, gaveta_saldo, supply)?;
+    if supply > 0 {
+        let base = (vault.deployed_usdc as u128)
+            .checked_add(caixa as u128)
+            .ok_or(DomError::MathOverflow)?
+            .checked_add(gaveta_saldo as u128)
+            .ok_or(DomError::MathOverflow)?;
+        let piso = u64::try_from(
+            base.checked_mul(NAV_SCALE as u128)
+                .ok_or(DomError::MathOverflow)?
+                / supply as u128,
+        )
+        .map_err(|_| error!(DomError::MathOverflow))?;
+        // `nav_piso` e' INFORMATIVO: o NAV liquido (capital + caixa + P) por cota,
+        // recalculado a cada publicacao para o laudo mostrar ao lado do bruto.
+        // Nao ha recusa por "bruto < piso": o contrato nao conhece a marcacao
+        // das posicoes, e um piso de capital travaria o oraculo em qualquer
+        // drawdown — a D-F2-43 §3 diz que nao existe piso para o capital. O que
+        // protege o P e' estrutural: ele nunca sai da gaveta antes do fechamento
+        // (J2) e a gaveta nao pode encolher (`GavetaDiminuiu`).
+        vault.nav_piso = piso;
+    }
 
     vault.nav = nav;
     vault.nav_ts = timestamp;

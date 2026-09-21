@@ -123,6 +123,24 @@ pub struct LucroDistribuido {
     /// `nav_depois - nav_antes`. É o que cada cota rende nesta distribuição.
     pub delta_lucro_por_cota: u64,
     pub cotas_por_socio: u64,
+    /// J1: Σ comissões de afiliados, em USDC — saiu de dentro de `parcela_socios`.
+    pub comissoes_afiliados: u64,
+    pub timestamp: i64,
+}
+
+/// J1: uma comissão de afiliado cunhada no fechamento. Um evento por linha da
+/// lista — o arquivo de distribuição é gerado daqui.
+#[event]
+pub struct ComissaoDeAfiliado {
+    pub indicado: Pubkey,
+    pub afiliado: Pubkey,
+    pub bps: u16,
+    /// O ganho do indicado no ciclo fechado, pelo índice (micro-USDC).
+    pub ganho_indicado: u64,
+    /// `ganho_indicado × taxa_mesa × bps ÷ 1e8` (micro-USDC).
+    pub comissao_usdc: u64,
+    /// Cotas cunhadas ao afiliado (ao `nav_fechamento`, já com o acerto dele compensado).
+    pub cotas: u64,
     pub timestamp: i64,
 }
 
