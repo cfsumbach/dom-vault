@@ -331,13 +331,14 @@ pub fn handle_deposit_especial<'info>(
             .ok_or(DomError::MathOverflow)?;
         require!(comissoes_total <= parcela_socios, DomError::MathOverflow);
 
+        let cotas_comissao = shares_from_usdc(comissao, nav_fechamento)?;
         let cotas = cunhar_com_acerto(
             v,
             &mut afiliado_posicao,
             &linha.afiliado,
             afiliado_dom.amount,
             &ctx.remaining_accounts[base + 2],
-            shares_from_usdc(comissao, nav_fechamento)?,
+            cotas_comissao,
             nav_fechamento,
             &ctx.accounts.dom_mint.to_account_info(),
             &ctx.accounts.dom_token_program,
@@ -354,6 +355,11 @@ pub fn handle_deposit_especial<'info>(
             ganho_indicado,
             comissao_usdc: comissao,
             cotas,
+            cotas_comissao,
+            /* i64 porque o acerto pode ser DÉBITO: a cunhagem sai menor que a comissão. */
+            cotas_acerto: (cotas as i64)
+                .checked_sub(cotas_comissao as i64)
+                .ok_or(DomError::MathOverflow)?,
             timestamp: now,
         });
     }

@@ -114,17 +114,23 @@ pub fn gerar() -> Value {
         .map(|c| {
             let g = ganho(c.cotas, c.entrada, 0, indice_p).unwrap();
             soma += g;
+            // As duas partes sao PISO, cada uma pela sua porta: a mesa e' o que o
+            // acerto cobra (`devido = ganho × taxa ÷ 10000`, indice.rs) e a do
+            // cotista e' o que a janela paga (`ganho × (10000 − taxa) ÷ 10000`,
+            // sacar_lucro.rs). Com ganho impar sobra 1 micro, que fica no cofre.
             let mesa = (g as u128 * taxa / 10_000) as u64;
+            let cotista = (g as u128 * (10_000 - taxa) / 10_000) as u64;
             json!({
                 "nome": c.nome, "cotas_micro": c.cotas, "indice_entrada": c.entrada.to_string(),
-                "ganho_micro": g, "parte_mesa_micro": mesa, "parte_cotista_micro": g - mesa,
+                "ganho_micro": g, "parte_mesa_micro": mesa, "parte_cotista_micro": cotista,
+                "sobra_no_cofre_micro": g - mesa - cotista,
             })
         })
         .collect();
 
     json!({
         "_fonte": "gerado por programs/dom_vault/tests/gabarito.rs a partir de indice.rs e math.rs — nao editar a mao",
-        "regra": "D-F2-43 §2 — indice de P por cota (reward-per-share)",
+        "regra": "D-F2-43 §2 — indice de P por cota (reward-per-share); partes: mesa = piso(ganho × taxa ÷ 1e4) [o acerto], cotista = piso(ganho × (1e4 − taxa) ÷ 1e4) [a janela]; a sobra de 1 micro fica no cofre",
         "indice_scale": INDICE_SCALE.to_string(),
         "taxa_mesa_bps": PERF_FEE_BPS_TOTAL,
         "nav_genesis_micro": NAV_GENESIS,

@@ -19,7 +19,23 @@ pub struct Deposited {
     pub depositor: Pubkey,
     pub usdc: u64,
     pub shares: u64,
+    /// O NAV **publicado** (bruto), como sempre — é o preço do fundo.
     pub nav: u64,
+    /// Upgrade K (D-F2-45): o que de fato precificou a emissão — `max(nav, nav_piso)`.
+    pub preco_usado: u64,
+    /// `true` quando o piso venceu o bruto: a cota saiu mais cara que o mercado
+    /// das posições, e a tela do aporte tem de dizer isso.
+    pub pelo_piso: bool,
+}
+
+/// Upgrade K: a correção privilegiada do custo de capital em campo. O motivo
+/// viaja no evento porque o memo do Squads não é cadeia.
+#[event]
+pub struct DeployedAjustado {
+    pub antes: u64,
+    pub depois: u64,
+    pub motivo: String,
+    pub timestamp: i64,
 }
 
 /// T55 — toda atualização de whitelist emite evento.
@@ -142,6 +158,22 @@ pub struct ComissaoDeAfiliado {
     /// Cotas cunhadas ao afiliado (ao `nav_fechamento`, já com o acerto dele compensado).
     pub cotas: u64,
     pub timestamp: i64,
+    // ─── OS CAMPOS DO K VÊM DEPOIS DO `timestamp`, E ISSO É DE PROPÓSITO ─────
+    // A mesa mandou (24/09, antes do GO). Campo novo no MEIO da struct desloca
+    // tudo que vem atrás: quem decodifica por posição — e não pela planta — leria
+    // `cotas_comissao` no lugar do `timestamp` e não erraria em voz alta; leria
+    // uma data absurda, ou pior, uma plausível. No fim, o decodificador antigo lê
+    // os campos que sempre leu, nas mesmas posições, e simplesmente ignora o
+    // rabo novo. É a mesma regra dos erros (6087/6088 no fim do enum, nada
+    // renumera) aplicada ao layout do evento.
+    /// Upgrade K (achado F9 do CC-DASH): a parte que é COMISSÃO —
+    /// `⌊comissao_usdc × 1e6 ÷ nav_fechamento⌋`. Até o J, quem quisesse este
+    /// número tinha de derivá-lo fora da cadeia.
+    pub cotas_comissao: u64,
+    /// A parte que é ACERTO do afiliado, netada na mesma cunhagem (uma vez, na
+    /// primeira linha dele). `cotas − cotas_comissao`; **negativo** quando o
+    /// afiliado devia taxa e a cunhagem veio menor.
+    pub cotas_acerto: i64,
 }
 
 /// D-F2-09 — um cotista sacou o lucro da janela.

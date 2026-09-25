@@ -7,16 +7,18 @@
       "ganho_micro": 4482332177,
       "indice_entrada": "0",
       "nome": "Egnon",
-      "parte_cotista_micro": 2241166089,
-      "parte_mesa_micro": 2241166088
+      "parte_cotista_micro": 2241166088,
+      "parte_mesa_micro": 2241166088,
+      "sobra_no_cofre_micro": 1
     },
     {
       "cotas_micro": 20000000000,
       "ganho_micro": 1629938973,
       "indice_entrada": "0",
       "nome": "Filipe",
-      "parte_cotista_micro": 814969487,
-      "parte_mesa_micro": 814969486
+      "parte_cotista_micro": 814969486,
+      "parte_mesa_micro": 814969486,
+      "sobra_no_cofre_micro": 1
     },
     {
       "cotas_micro": 12000000000,
@@ -24,7 +26,8 @@
       "indice_entrada": "0",
       "nome": "Leonardo",
       "parte_cotista_micro": 488981692,
-      "parte_mesa_micro": 488981692
+      "parte_mesa_micro": 488981692,
+      "sobra_no_cofre_micro": 0
     },
     {
       "cotas_micro": 9000000000,
@@ -32,7 +35,8 @@
       "indice_entrada": "0",
       "nome": "Djan",
       "parte_cotista_micro": 366736269,
-      "parte_mesa_micro": 366736269
+      "parte_mesa_micro": 366736269,
+      "sobra_no_cofre_micro": 0
     },
     {
       "cotas_micro": 7836737252,
@@ -40,15 +44,17 @@
       "indice_entrada": "20833333333333333",
       "nome": "Ariel",
       "parte_cotista_micro": 237702407,
-      "parte_mesa_micro": 237702407
+      "parte_mesa_micro": 237702407,
+      "sobra_no_cofre_micro": 0
     },
     {
       "cotas_micro": 6367349017,
       "ganho_micro": 386266411,
       "indice_entrada": "20833333333333333",
       "nome": "Gisleno",
-      "parte_cotista_micro": 193133206,
-      "parte_mesa_micro": 193133205
+      "parte_cotista_micro": 193133205,
+      "parte_mesa_micro": 193133205,
+      "sobra_no_cofre_micro": 1
     },
     {
       "cotas_micro": 4897960783,
@@ -56,7 +62,8 @@
       "indice_entrada": "20833333333333333",
       "nome": "Silvio",
       "parte_cotista_micro": 148564004,
-      "parte_mesa_micro": 148564004
+      "parte_mesa_micro": 148564004,
+      "sobra_no_cofre_micro": 0
     },
     {
       "cotas_micro": 489796078,
@@ -64,47 +71,53 @@
       "indice_entrada": "20833333333333333",
       "nome": "Rosane",
       "parte_cotista_micro": 14856400,
-      "parte_mesa_micro": 14856400
+      "parte_mesa_micro": 14856400,
+      "sobra_no_cofre_micro": 0
     },
     {
       "cotas_micro": 1450945000,
       "ganho_micro": 69191099,
       "indice_entrada": "33810027530630885",
       "nome": "Raony",
-      "parte_cotista_micro": 34595550,
-      "parte_mesa_micro": 34595549
+      "parte_cotista_micro": 34595549,
+      "parte_mesa_micro": 34595549,
+      "sobra_no_cofre_micro": 1
     },
     {
       "cotas_micro": 773837333,
       "ganho_micro": 36901919,
       "indice_entrada": "33810027530630885",
       "nome": "Abraao",
-      "parte_cotista_micro": 18450960,
-      "parte_mesa_micro": 18450959
+      "parte_cotista_micro": 18450959,
+      "parte_mesa_micro": 18450959,
+      "sobra_no_cofre_micro": 1
     },
     {
       "cotas_micro": 290189000,
       "ganho_micro": 13838219,
       "indice_entrada": "33810027530630885",
       "nome": "Hugo",
-      "parte_cotista_micro": 6919110,
-      "parte_mesa_micro": 6919109
+      "parte_cotista_micro": 6919109,
+      "parte_mesa_micro": 6919109,
+      "sobra_no_cofre_micro": 1
     },
     {
       "cotas_micro": 14218319451,
       "ganho_micro": 377064731,
       "indice_entrada": "54977307432022090",
       "nome": "Edson",
-      "parte_cotista_micro": 188532366,
-      "parte_mesa_micro": 188532365
+      "parte_cotista_micro": 188532365,
+      "parte_mesa_micro": 188532365,
+      "sobra_no_cofre_micro": 1
     },
     {
       "cotas_micro": 6635215744,
       "ganho_micro": 175963541,
       "indice_entrada": "54977307432022090",
       "nome": "Ismar",
-      "parte_cotista_micro": 87981771,
-      "parte_mesa_micro": 87981770
+      "parte_cotista_micro": 87981770,
+      "parte_mesa_micro": 87981770,
+      "sobra_no_cofre_micro": 1
     },
     {
       "cotas_micro": 3791551853,
@@ -112,7 +125,8 @@
       "indice_entrada": "54977307432022090",
       "nome": "Rafael",
       "parte_cotista_micro": 50275297,
-      "parte_mesa_micro": 50275297
+      "parte_mesa_micro": 50275297,
+      "sobra_no_cofre_micro": 0
     },
     {
       "cotas_micro": 2341731719,
@@ -120,23 +134,26 @@
       "indice_entrada": "67586596561955660",
       "nome": "Victor",
       "parte_cotista_micro": 16287156,
-      "parte_mesa_micro": 16287156
+      "parte_mesa_micro": 16287156,
+      "sobra_no_cofre_micro": 0
     },
     {
       "cotas_micro": 9366926879,
       "ganho_micro": 130297251,
       "indice_entrada": "67586596561955660",
       "nome": "Marcos",
-      "parte_cotista_micro": 65148626,
-      "parte_mesa_micro": 65148625
+      "parte_cotista_micro": 65148625,
+      "parte_mesa_micro": 65148625,
+      "sobra_no_cofre_micro": 1
     },
     {
       "cotas_micro": 2789776399,
       "ganho_micro": 17133073,
       "indice_entrada": "75355570073078382",
       "nome": "Tatiane",
-      "parte_cotista_micro": 8566537,
-      "parte_mesa_micro": 8566536
+      "parte_cotista_micro": 8566536,
+      "parte_mesa_micro": 8566536,
+      "sobra_no_cofre_micro": 1
     },
     {
       "cotas_micro": 5579552798,
@@ -144,7 +161,8 @@
       "indice_entrada": "75355570073078382",
       "nome": "Bruno",
       "parte_cotista_micro": 17133073,
-      "parte_mesa_micro": 17133073
+      "parte_mesa_micro": 17133073,
+      "sobra_no_cofre_micro": 0
     }
   ],
   "indice_p_final": "81496948687668840",
@@ -327,7 +345,7 @@
   ],
   "nav_genesis_micro": 1000000,
   "p_total_micro": 10000000000,
-  "regra": "D-F2-43 §2 — indice de P por cota (reward-per-share)",
+  "regra": "D-F2-43 §2 — indice de P por cota (reward-per-share); partes: mesa = piso(ganho × taxa ÷ 1e4) [o acerto], cotista = piso(ganho × (1e4 − taxa) ÷ 1e4) [a janela]; a sobra de 1 micro fica no cofre",
   "residuo_micro": 10,
   "soma_ganho_micro": 9999999990,
   "supply_final_micro": 162829889306,

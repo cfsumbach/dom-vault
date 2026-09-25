@@ -183,24 +183,11 @@ fn set_gaveta_so_a_autoridade_nunca_a_treasury_e_so_entre_ciclos() {
     );
 }
 
-/// A instrução temporária da cerimônia regrava a lista de contas extras do
-/// hook sobre a lista VIVA (a entrada TLV já existe): `update`, não `init`.
-/// Em devnet (21/09) o `init` derrubou a proposta de migração inteira com
-/// `TypeAlreadyExists`. Depois de regravar, a transferência com hook passa.
-#[test]
-fn atualizar_extra_account_meta_list_regrava_a_lista_viva() {
-    let mut env = Env::new();
-    let a = env.cotista(5_000 * UNIT);
-    let b = env.carteira(0);
-    assert_ok(
-        env.atualizar_extra_account_meta_list(),
-        "regravar a lista viva",
-    );
-    assert_ok(env.atualizar_extra_account_meta_list(), "idempotente");
-    env.transfer(&a, &b.dom, &b.wallet.pubkey(), 100 * UNIT)
-        .expect("hook resolve as 10 metas depois da regravacao");
-    assert_eq!(saldo(&env.svm, &b.dom), 100 * UNIT);
-}
+// O teste `atualizar_extra_account_meta_list_regrava_a_lista_viva` SAIU no
+// Upgrade K com a instrucao (D-F2-45 §4). O que ele provava — que a lista viva
+// se regrava com `update` e nao com `init` (o `TypeAlreadyExists` de devnet na
+// #81) — fica registrado no PROCEDIMENTO-UPGRADE, anexo J, para o dia em que a
+// instrucao precisar voltar.
 
 /// **No J toda cota vive na ATA do dono.** O acerto é por carteira e lê UMA
 /// conta: com uma segunda conta, o dono acertaria pela menor, marcaria a

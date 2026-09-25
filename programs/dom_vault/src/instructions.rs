@@ -1,4 +1,5 @@
 pub mod acertar;
+pub mod ajustar_deployed;
 pub mod deploy_capital;
 pub mod deposit;
 pub mod deposit_especial;
@@ -22,9 +23,9 @@ pub mod update_socios;
 pub mod update_whitelist;
 
 pub use {
-    acertar::*, deploy_capital::*, deposit::*, deposit_especial::*, deposit_para::*, enable_cap::*,
-    execute::*, gaveta::*, init_extra_account_metas::*, initialize::*, migracao_j::*,
-    min_deposit::*, parametros::*, pause::*, publish_nav::*, redeem_fee_share::*,
-    resgate_capital::*, sacar_lucro::*, set_whitelist_operator::*, update_deploy_allowlist::*,
-    update_socios::*, update_whitelist::*,
+    acertar::*, ajustar_deployed::*, deploy_capital::*, deposit::*, deposit_especial::*,
+    deposit_para::*, enable_cap::*, execute::*, gaveta::*, init_extra_account_metas::*,
+    initialize::*, migracao_j::*, min_deposit::*, parametros::*, pause::*, publish_nav::*,
+    redeem_fee_share::*, resgate_capital::*, sacar_lucro::*, set_whitelist_operator::*,
+    update_deploy_allowlist::*, update_socios::*, update_whitelist::*,
 };

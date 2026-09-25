@@ -202,19 +202,19 @@ pub mod dom_vault {
         instructions::gaveta::handle_abrir_posicao(ctx)
     }
 
-    /// Upgrade J: a lista de contas extras do hook ganha a posicao do destino. TEMPORARIA.
-    pub fn atualizar_extra_account_meta_list(
-        ctx: Context<AtualizarExtraAccountMetaList>,
-    ) -> Result<()> {
-        instructions::init_extra_account_metas::handle_atualizar_extra_account_meta_list(ctx)
-    }
-
-    /// Upgrade J (D-F2-43): migra o cofre 603 → 731 bytes; a gaveta nasce vazia e
-    /// o `set_gaveta_usdc` a aponta na mesma proposta.
-    /// TEMPORARIA — sai no upgrade seguinte, como a do E saiu no F.
-    pub fn migrar_vault_indice(ctx: Context<MigrarVaultIndice>) -> Result<()> {
-        instructions::migracao_j::handle_migrar_vault_indice(ctx)
-    }
+    // A `atualizar_extra_account_meta_list` e a `migrar_vault_indice` SAIRAM no
+    // Upgrade K (D-F2-45 §4). As duas eram temporarias por escrito: cumpriram o
+    // servico na proposta #94 (J.2) e viraram caneta esquecida — o mesmo caminho
+    // da `migrar_vault_parametros` no F e da `corrigir_deployed_usdc` no G.
+    //
+    // ⚠️ Se um upgrade futuro mudar as contas extras do hook, a
+    // `atualizar_extra_account_meta_list` VOLTA naquele upgrade: a conta do
+    // `ExtraAccountMetaList` so' se atualiza por ela (o `init` responde
+    // `TypeAlreadyExists`, medido em devnet na #81). E' recuperavel, e fica
+    // dito aqui para nao ser descoberto na hora.
+    //
+    // Os erros que elas usavam FICAM declarados: remove-los renumeraria o enum
+    // e quebraria toda tela que traduz codigo de erro.
 
     /// **Rotaciona a chave do oráculo de NAV. Privilegiada.**
     ///
@@ -314,6 +314,16 @@ pub mod dom_vault {
     // ninguem a usa, ninguem a remove, e um dia alguem descobre que ela existe.
     // Os erros 6075/6076 FICAM declarados de proposito — remove-los renumeraria
     // o enum inteiro e quebraria toda tela que traduz codigo de erro.
+
+    /// Upgrade K (D-F2-45): corrige o custo do capital em campo. **Só reduz** —
+    /// ver `instructions/ajustar_deployed.rs` para a razão, que é o preço.
+    pub fn ajustar_deployed_usdc(
+        ctx: Context<AjustarDeployedUsdc>,
+        novo: u64,
+        motivo: String,
+    ) -> Result<()> {
+        instructions::ajustar_deployed::handle_ajustar_deployed_usdc(ctx, novo, motivo)
+    }
 
     pub fn update_min_deposit(ctx: Context<UpdateMinDeposit>, novo: u64) -> Result<()> {
         instructions::min_deposit::handle_update_min_deposit(ctx, novo)

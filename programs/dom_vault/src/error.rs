@@ -210,4 +210,15 @@ pub enum DomError {
     AfiliadoRepetido,
     #[msg("A conta de cota nao e' a ATA do dono — no J toda cota vive na ATA (o acerto e' por carteira, nao por conta)")]
     ContaDeCotaNaoEAta,
+
+    /// Upgrade K (D-F2-45): `ajustar_deployed_usdc` só REDUZ. Aumentar levantaria
+    /// o `nav_piso`, que desde o K é o preço mínimo de entrada — uma caneta que
+    /// encarece a cota de quem chega.
+    #[msg(
+        "deployed_usdc so pode ser reduzido: aumentar levantaria o piso, que e' o preco de entrada"
+    )]
+    DeployedSoReduz,
+    /// Upgrade K: correção privilegiada sem motivo escrito é caneta sem rastro.
+    #[msg("o motivo do ajuste tem de ter entre 8 e 200 caracteres")]
+    MotivoInvalido,
 }

@@ -6,19 +6,24 @@ repositorio de trabalho, a cada upgrade. Pull request aqui nao alcanca o program
 Existe para uma coisa so': **qualquer pessoa refazer o binario e conferir o
 `sha256` contra o que esta' na rede.**
 
-> ✅ **Este espelho reproduz o binario INSTALADO EM MAINNET.**
-> `c24c17a039661c98792d7d7d5370dcbde854964f7d6e938723be2c3da79ae89f`
+> ⚠️ **Este espelho NAO e' o binario instalado.** Ele reproduz uma
+> versao construida e ainda nao publicada.
+>
+> instalado em mainnet ... `c24c17a039661c98792d7d7d5370dcbde854964f7d6e938723be2c3da79ae89f`
+> este espelho .......... `b18ffbbdb5ad8be4dc74c3d3a96e327dda8274de352d88adfbffc705cace18b4`
+>
+> Conferir contra a rede hoje vai dar diferenca, e a diferenca e' esta.
 
 ## O que este espelho reproduz
 
 | | |
 |---|---|
 | programa | `2KRqqGA47Pg2ML7Q8WJyaVAmEL8DaRx1sKxqzpVyNnkg` |
-| `sha256` do `.so` | `c24c17a039661c98792d7d7d5370dcbde854964f7d6e938723be2c3da79ae89f` |
-| tamanho | 845824 bytes |
-| instrucoes no IDL | 32 |
-| erros no IDL | 87 |
-| gerado em | 2026-09-21T16:47:01Z |
+| `sha256` do `.so` | `b18ffbbdb5ad8be4dc74c3d3a96e327dda8274de352d88adfbffc705cace18b4` |
+| tamanho | 837920 bytes |
+| instrucoes no IDL | 31 |
+| erros no IDL | 89 |
+| gerado em | 2026-09-25T13:29:27Z |
 
 ## Sobre o `idl/dom_vault.json` — leia antes de vendorizar
 
@@ -57,7 +62,7 @@ sha256sum target/deploy/dom_vault.so    # tem de dar o sha da tabela acima
 
 ```bash
 solana program dump 2KRqqGA47Pg2ML7Q8WJyaVAmEL8DaRx1sKxqzpVyNnkg rede.so --url mainnet-beta
-head -c 845824 rede.so | sha256sum       # 845824 = o tamanho da tabela acima
+head -c 837920 rede.so | sha256sum       # 837920 = o tamanho da tabela acima
 ```
 
 ⚠️ **`sha256sum rede.so` direto NAO bate, e nao e' sinal de adulteracao.**

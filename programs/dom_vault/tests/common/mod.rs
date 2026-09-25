@@ -185,6 +185,19 @@ pub fn assert_ok(result: TransactionResult, cenario: &str) -> TransactionMetadat
 
 /// Procura um evento do Anchor nos logs pelo discriminador — `emit!` publica em
 /// `Program data:` codificado em base64.
+/// O primeiro evento `E` da transação, decodificado. `None` quando não houve —
+/// distinto de "houve e veio zerado", que é o que um `unwrap_or_default` esconde.
+pub fn evento<E: Discriminator + anchor_lang::AnchorDeserialize>(
+    meta: &TransactionMetadata,
+) -> Option<E> {
+    meta.logs
+        .iter()
+        .filter_map(|linha| linha.strip_prefix("Program data: "))
+        .filter_map(|dados| BASE64.decode(dados).ok())
+        .find(|bytes| bytes.starts_with(E::DISCRIMINATOR))
+        .and_then(|bytes| E::try_from_slice(&bytes[8..]).ok())
+}
+
 pub fn tem_evento<E: Discriminator>(meta: &TransactionMetadata) -> bool {
     meta.logs
         .iter()
@@ -980,45 +993,33 @@ impl Env {
     }
 
     /// Upgrade J: regrava a lista de contas extras do hook (a instrucao temporaria da cerimonia).
-    pub fn atualizar_extra_account_meta_list(&mut self) -> TransactionResult {
+    /// Upgrade K (D-F2-45): a ferramenta que corrige o custo de capital em campo.
+    pub fn ajustar_deployed_usdc_raw(
+        &mut self,
+        signer: &Keypair,
+        novo: u64,
+        motivo: &str,
+    ) -> TransactionResult {
+        let ix = Instruction::new_with_bytes(
+            dom_vault::ID,
+            &dom_vault::instruction::AjustarDeployedUsdc {
+                novo,
+                motivo: motivo.to_string(),
+            }
+            .data(),
+            dom_vault::accounts::AjustarDeployedUsdc {
+                authority: signer.pubkey(),
+                vault: vault_pda(),
+            }
+            .to_account_metas(None),
+        );
+        let signer = signer.insecure_clone();
+        send(&mut self.svm, &self.payer, &[ix], &[&signer])
+    }
+
+    pub fn ajustar_deployed_usdc(&mut self, novo: u64, motivo: &str) -> TransactionResult {
         let authority = self.authority.insecure_clone();
-        self.atualizar_extra_account_meta_list_por(&authority)
-    }
-
-    /// A migracao J assinada por `signer` — em conta ja' migrada so' serve para
-    /// provar a recusa de quem nao e' a autoridade (a de layout vem depois).
-    pub fn migrar_vault_indice_raw(&mut self, signer: &Keypair) -> TransactionResult {
-        let ix = Instruction::new_with_bytes(
-            dom_vault::ID,
-            &dom_vault::instruction::MigrarVaultIndice {}.data(),
-            dom_vault::accounts::MigrarVaultIndice {
-                authority: signer.pubkey(),
-                vault: vault_pda(),
-                pagador: self.payer.pubkey(),
-                system_program: anchor_lang::system_program::ID,
-            }
-            .to_account_metas(None),
-        );
-        let signer = signer.insecure_clone();
-        send(&mut self.svm, &self.payer, &[ix], &[&signer])
-    }
-
-    pub fn atualizar_extra_account_meta_list_por(&mut self, signer: &Keypair) -> TransactionResult {
-        let ix = Instruction::new_with_bytes(
-            dom_vault::ID,
-            &dom_vault::instruction::AtualizarExtraAccountMetaList {}.data(),
-            dom_vault::accounts::AtualizarExtraAccountMetaList {
-                payer: self.payer.pubkey(),
-                authority: signer.pubkey(),
-                vault: vault_pda(),
-                mint: self.dom_mint,
-                extra_account_meta_list: validation_pda(&self.dom_mint),
-                system_program: anchor_lang::system_program::ID,
-            }
-            .to_account_metas(None),
-        );
-        let signer = signer.insecure_clone();
-        send(&mut self.svm, &self.payer, &[ix], &[&signer])
+        self.ajustar_deployed_usdc_raw(&authority, novo, motivo)
     }
 
     /// Upgrade J: absorve a gaveta no indice sem publicar NAV.

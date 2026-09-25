@@ -191,7 +191,24 @@ pub fn handle_deposit(ctx: Context<Deposit>, usdc_amount: u64) -> Result<()> {
     let cotas_antes = ctx.accounts.depositor_dom.amount;
 
     let nav = ctx.accounts.vault.nav;
-    let shares = shares_from_usdc(usdc_amount, nav)?;
+    // ─── O PRECO DA EMISSAO E' `max(nav, nav_piso)` (Upgrade K, D-F2-45) ─────
+    // Em 23/09 o NAV publicou 0,909130 por uma perna sem leitor: quem aportasse
+    // naquela janela levaria 16,4% mais cotas de graca, e a diluicao seria de
+    // todo mundo. A mesa decidiu que **ninguem entra abaixo do piso**.
+    //
+    // O `publish_nav` continua publicando o BRUTO — drawdown e' real e aparece
+    // na tela. A trava e' aqui, no unico lugar onde a diluicao acontece: a
+    // emissao. Resgate, `redeem_fee_share` e `sacar_lucro` nao mudam; saem ao
+    // bruto e ao preco do fechamento.
+    //
+    // Consequencia aceita pela mesa e registrada na D-F2-45: em queda real o
+    // piso nao cai (ele e' capital ao custo), entao o entrante paga acima do
+    // valor de mercado das posicoes — +4,8% numa queda de 5%, +24,4% em 20%.
+    //
+    // Genese (`supply == 0`): o piso e' zero e o `max` devolve o NAV.
+    let preco = nav.max(ctx.accounts.vault.nav_piso);
+    let pelo_piso = preco > nav;
+    let shares = shares_from_usdc(usdc_amount, preco)?;
     // Aporte que, ao NAV corrente, não compra nem uma unidade de cota seria
     // doação ao cofre. Com o mínimo de 200 USDC isso exige NAV absurdo, mas a
     // trava é barata e o caso é o do T51.
@@ -266,6 +283,8 @@ pub fn handle_deposit(ctx: Context<Deposit>, usdc_amount: u64) -> Result<()> {
         usdc: usdc_amount,
         shares,
         nav,
+        preco_usado: preco,
+        pelo_piso,
     });
 
     Ok(())

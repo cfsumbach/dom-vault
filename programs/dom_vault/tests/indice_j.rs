@@ -281,7 +281,24 @@ fn j1_a_comissao_sai_da_mesa_e_o_cotista_nao_paga_um_micro_a_mais() {
         .collect();
     let socio_antes = saldo(&env.svm, &env.socios[0].dom);
 
-    env.deposit_especial_afiliados(10_000 * E6, &lista);
+    let meta = env.deposit_especial_afiliados(10_000 * E6, &lista);
+    // Upgrade K: o evento separa o que e' COMISSAO do que e' ACERTO netado na
+    // mesma cunhagem (achado F9 do CC-DASH). Antes do K, `cotas` sozinho fazia
+    // parecer que a comissao tinha sido maior do que foi.
+    {
+        use dom_vault::events::ComissaoDeAfiliado;
+        let e: ComissaoDeAfiliado = evento(&meta).expect("ComissaoDeAfiliado");
+        assert_eq!(
+            e.cotas as i64 - e.cotas_comissao as i64,
+            e.cotas_acerto,
+            "cotas = cotas_comissao + cotas_acerto, com sinal"
+        );
+        assert_eq!(
+            e.cotas_comissao,
+            (e.comissao_usdc as u128 * E6 as u128 / env.vault().nav_fechamento as u128) as u64,
+            "cotas_comissao e' a comissao ao preco do fechamento, truncada"
+        );
+    }
     let v = env.vault();
     let nav_f = v.nav_fechamento as u128;
 

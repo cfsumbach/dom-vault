@@ -472,7 +472,29 @@ fn custo_em_cu_das_instrucoes_do_j() {
         meta.compute_units_consumed,
     ));
 
-    println!("\n  CU por instrucao (Upgrade J) — teto padrao {TETO_PADRAO} por transacao");
+    // Upgrade K (D-F2-45): a caneta nova, medida num cofre proprio (o cenario
+    // acima nunca manda capital a campo, e a instrucao exige `deployed_usdc > 0`).
+    {
+        let mut e2 = Env::new();
+        let _ = e2.cotista(10_000 * E6);
+        let ops = e2.carteira(0);
+        e2.update_deploy_allowlist(0, ops.wallet.pubkey());
+        e2.deploy_capital(ops.usdc, 9_000 * E6);
+        let antes = e2.vault().deployed_usdc;
+        let meta = assert_ok(
+            e2.ajustar_deployed_usdc(antes - E6, "medicao de CU na auditoria do K"),
+            "ajustar_deployed_usdc",
+        );
+        linhas.push(("ajustar_deployed_usdc", meta.compute_units_consumed));
+    }
+    /* Aporte com o bruto ABAIXO do piso: o caminho que o K acrescentou. */
+    env.publish_nav_pela_mesa(env.vault().nav_piso / 2);
+    let pelo_piso = env.carteira(1_000 * E6);
+    env.whitelist(&pelo_piso.wallet.pubkey(), true);
+    let meta = env.deposit(&pelo_piso, 1_000 * E6);
+    linhas.push(("deposit pelo PISO (K)", meta.compute_units_consumed));
+
+    println!("\n  CU por instrucao (Upgrade K) — teto padrao {TETO_PADRAO} por transacao");
     let mut pior: std::collections::BTreeMap<&str, u64> = Default::default();
     for (nome, cu) in &linhas {
         let e = pior.entry(nome).or_insert(0);

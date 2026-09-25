@@ -181,6 +181,60 @@
       "args": []
     },
     {
+      "name": "ajustar_deployed_usdc",
+      "docs": [
+        "Upgrade K (D-F2-45): corrige o custo do capital em campo. **Só reduz** —",
+        "ver `instructions/ajustar_deployed.rs` para a razão, que é o preço."
+      ],
+      "discriminator": [
+        130,
+        110,
+        116,
+        201,
+        223,
+        152,
+        238,
+        83
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "vault"
+          ]
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "novo",
+          "type": "u64"
+        },
+        {
+          "name": "motivo",
+          "type": "string"
+        }
+      ]
+    },
+    {
       "name": "ajustar_parametro",
       "docs": [
         "Ajusta o depósito mínimo em vigor. **Privilegiada** — 12ª caneta.",
@@ -242,97 +296,6 @@
           "type": "u64"
         }
       ]
-    },
-    {
-      "name": "atualizar_extra_account_meta_list",
-      "docs": [
-        "Upgrade J: a lista de contas extras do hook ganha a posicao do destino. TEMPORARIA."
-      ],
-      "discriminator": [
-        197,
-        206,
-        41,
-        93,
-        39,
-        210,
-        96,
-        198
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "authority",
-          "signer": true,
-          "relations": [
-            "vault"
-          ]
-        },
-        {
-          "name": "vault",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "mint"
-        },
-        {
-          "name": "extra_account_meta_list",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  120,
-                  116,
-                  114,
-                  97,
-                  45,
-                  97,
-                  99,
-                  99,
-                  111,
-                  117,
-                  110,
-                  116,
-                  45,
-                  109,
-                  101,
-                  116,
-                  97,
-                  115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "mint"
-              }
-            ]
-          }
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
     },
     {
       "name": "carimbar_nav",
@@ -1574,61 +1537,6 @@
               }
             ]
           }
-        }
-      ],
-      "args": []
-    },
-    {
-      "name": "migrar_vault_indice",
-      "docs": [
-        "Upgrade J (D-F2-43): migra o cofre 603 → 731 bytes; a gaveta nasce vazia e",
-        "o `set_gaveta_usdc` a aponta na mesma proposta.",
-        "TEMPORARIA — sai no upgrade seguinte, como a do E saiu no F."
-      ],
-      "discriminator": [
-        125,
-        85,
-        241,
-        124,
-        36,
-        250,
-        103,
-        39
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "signer": true
-        },
-        {
-          "name": "vault",
-          "docs": [
-            "antigo e `Account<Vault>` desserializaria antes das constraints."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "pagador",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
@@ -3000,6 +2908,19 @@
       ]
     },
     {
+      "name": "DeployedAjustado",
+      "discriminator": [
+        143,
+        158,
+        229,
+        38,
+        43,
+        179,
+        149,
+        162
+      ]
+    },
+    {
       "name": "Deposited",
       "discriminator": [
         111,
@@ -3669,6 +3590,16 @@
       "code": 6086,
       "name": "ContaDeCotaNaoEAta",
       "msg": "A conta de cota nao e' a ATA do dono — no J toda cota vive na ATA (o acerto e' por carteira, nao por conta)"
+    },
+    {
+      "code": 6087,
+      "name": "DeployedSoReduz",
+      "msg": "deployed_usdc so pode ser reduzido: aumentar levantaria o piso, que e' o preco de entrada"
+    },
+    {
+      "code": 6088,
+      "name": "MotivoInvalido",
+      "msg": "o motivo do ajuste tem de ter entre 8 e 200 caracteres"
     }
   ],
   "types": [
@@ -3826,6 +3757,24 @@
           {
             "name": "timestamp",
             "type": "i64"
+          },
+          {
+            "name": "cotas_comissao",
+            "docs": [
+              "Upgrade K (achado F9 do CC-DASH): a parte que é COMISSÃO —",
+              "`⌊comissao_usdc × 1e6 ÷ nav_fechamento⌋`. Até o J, quem quisesse este",
+              "número tinha de derivá-lo fora da cadeia."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "cotas_acerto",
+            "docs": [
+              "A parte que é ACERTO do afiliado, netada na mesma cunhagem (uma vez, na",
+              "primeira linha dele). `cotas − cotas_comissao`; **negativo** quando o",
+              "afiliado devia taxa e a cunhagem veio menor."
+            ],
+            "type": "i64"
           }
         ]
       }
@@ -3871,6 +3820,34 @@
       }
     },
     {
+      "name": "DeployedAjustado",
+      "docs": [
+        "Upgrade K: a correção privilegiada do custo de capital em campo. O motivo",
+        "viaja no evento porque o memo do Squads não é cadeia."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "antes",
+            "type": "u64"
+          },
+          {
+            "name": "depois",
+            "type": "u64"
+          },
+          {
+            "name": "motivo",
+            "type": "string"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
       "name": "Deposited",
       "docs": [
         "`nav` é o do instante do depósito — o mesmo que gerou as cotas. Fica no",
@@ -3893,7 +3870,25 @@
           },
           {
             "name": "nav",
+            "docs": [
+              "O NAV **publicado** (bruto), como sempre — é o preço do fundo."
+            ],
             "type": "u64"
+          },
+          {
+            "name": "preco_usado",
+            "docs": [
+              "Upgrade K (D-F2-45): o que de fato precificou a emissão — `max(nav, nav_piso)`."
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "pelo_piso",
+            "docs": [
+              "`true` quando o piso venceu o bruto: a cota saiu mais cara que o mercado",
+              "das posições, e a tela do aporte tem de dizer isso."
+            ],
+            "type": "bool"
           }
         ]
       }

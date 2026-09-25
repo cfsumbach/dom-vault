@@ -216,15 +216,12 @@ fn t54_instrucoes_privilegiadas_rejeitam_nao_autoridade() {
         DomError::Unauthorized,
         "T54 set_gaveta_usdc",
     );
+    // Upgrade K: a caneta nova entra na varredura JUNTO com o teste de recusa
+    // dela — nunca depois. As duas temporarias do J sairam (D-F2-45 §4).
     assert_dom_error(
-        env.atualizar_extra_account_meta_list_por(&intruso),
+        env.ajustar_deployed_usdc_raw(&intruso, 1, "teste de intruso"),
         DomError::Unauthorized,
-        "T54 atualizar_extra_account_meta_list",
-    );
-    assert_dom_error(
-        env.migrar_vault_indice_raw(&intruso),
-        DomError::Unauthorized,
-        "T54 migrar_vault_indice",
+        "T54 ajustar_deployed_usdc",
     );
     assert_dom_error(
         env.update_socios_raw(
@@ -432,8 +429,8 @@ fn t89_a_lista_de_privilegiadas_sai_do_idl() {
         // Upgrade J (D-F2-43): a caneta que aponta a gaveta, e as duas
         // TEMPORARIAS da cerimonia — saem no upgrade seguinte, com as linhas.
         ("set_gaveta_usdc", "T54 / gaveta.rs"),
-        ("migrar_vault_indice", "T54"),
-        ("atualizar_extra_account_meta_list", "T54"),
+        // Upgrade K (D-F2-45): a ferramenta que corrige o custo de capital.
+        ("ajustar_deployed_usdc", "T54 / ajustar_deployed.rs"),
     ];
     let mut nomes_exercidos: Vec<String> = exercidas.iter().map(|(n, _)| n.to_string()).collect();
     nomes_exercidos.sort();
@@ -484,14 +481,15 @@ fn t89_a_lista_de_privilegiadas_sai_do_idl() {
     // caminho do porteiro. Ela segue aceitando a autoridade, e o porteiro e' uma
     // porta a mais — nao a substituicao da caneta da mesa.
     //
-    // **O Upgrade J levou a DEZOITO** (D-F2-43): `set_gaveta_usdc` (permanente —
-    // a mesa aponta a gaveta) e as duas temporarias da cerimonia,
-    // `migrar_vault_indice` e `atualizar_extra_account_meta_list`, que saem no
-    // upgrade seguinte (volta a 16). E o `deposit_especial` SAIU da lista: a
-    // caneta dele e' a dona da gaveta, nao a autoridade.
+    // **O Upgrade J levou a DEZOITO** (D-F2-43) e o **K trouxe a DEZESSETE**
+    // (D-F2-45): entrou `ajustar_deployed_usdc` (permanente — a ferramenta de
+    // correcao do custo de capital) e sairam as duas temporarias da cerimonia
+    // do J, `migrar_vault_indice` e `atualizar_extra_account_meta_list`. O
+    // `deposit_especial` continua FORA da lista: a caneta dele e' a dona da
+    // gaveta, nao a autoridade.
     assert_eq!(
         do_idl.len(),
-        18,
+        17,
         "contagem de privilegiadas mudou: {do_idl:?}"
     );
 
