@@ -146,6 +146,46 @@ pub struct LucroDistribuido {
 
 /// J1: uma comissão de afiliado cunhada no fechamento. Um evento por linha da
 /// lista — o arquivo de distribuição é gerado daqui.
+/// A comissão de um afiliado **não alcançou o mínimo** e foi para a reserva dele.
+///
+/// ⚠️ **Evento NOVO, e não campo novo no `ComissaoDeAfiliado`** — o cabeçalho
+/// daquele evento explica por que campo novo nele é caro: quem decodifica por
+/// posição lê o campo errado sem errar em voz alta. Evento novo não desloca
+/// nada, e quem não o conhece simplesmente não o vê.
+#[event]
+pub struct ComissaoAcumulada {
+    pub indicado: Pubkey,
+    pub afiliado: Pubkey,
+    pub bps: u16,
+    /// O ganho do indicado no ciclo fechado, pelo índice (micro-USDC).
+    pub ganho_indicado: u64,
+    /// A comissão DESTE fechamento (micro-USDC). Devida, e debitada da mesa.
+    pub comissao_usdc: u64,
+    /// O total acumulado na reserva DEPOIS deste fechamento (micro-USDC).
+    pub acumulado_micro: u64,
+    /// O mínimo vigente (micro-USDC), para o leitor não ter de adivinhá-lo.
+    pub minimo_micro: u64,
+    pub timestamp: i64,
+}
+
+/// A reserva de um afiliado alcançou o mínimo e foi paga INTEIRA em cota.
+#[event]
+pub struct ComissaoDaReservaPaga {
+    pub afiliado: Pubkey,
+    /// A comissão deste fechamento (micro-USDC).
+    pub do_ciclo_micro: u64,
+    /// O que estava acumulado na reserva **antes desta LINHA** (micro-USDC).
+    ///
+    /// ⚠️ "Antes desta linha", e não "antes deste fechamento": a mesma carteira
+    /// pode ser afiliada em duas linhas da mesma lista, e a segunda vê o que a
+    /// primeira acumulou. Achado da revisão adversária de 13/10 — o rótulo
+    /// anterior dizia "fechamento" e era falso nesse caso.
+    pub da_reserva_micro: u64,
+    /// `do_ciclo_micro + da_reserva_micro` — o que foi precificado em cota.
+    pub total_micro: u64,
+    pub timestamp: i64,
+}
+
 #[event]
 pub struct ComissaoDeAfiliado {
     pub indicado: Pubkey,
@@ -153,7 +193,19 @@ pub struct ComissaoDeAfiliado {
     pub bps: u16,
     /// O ganho do indicado no ciclo fechado, pelo índice (micro-USDC).
     pub ganho_indicado: u64,
-    /// `ganho_indicado × taxa_mesa × bps ÷ 1e8` (micro-USDC).
+    /// A comissão **precificada em cota** nesta linha, em micro-USDC.
+    ///
+    /// ⚠️ Era `ganho_indicado × taxa_mesa × bps ÷ 1e8`, e o doc ficou velho duas
+    /// vezes: o `taxa_mesa` saiu em 12/10 (N7: a comissão passou a ser sobre o
+    /// ganho BRUTO, `ganho × bps ÷ 1e4`), e no item 7 o campo passou a ser o
+    /// **devido** — a comissão deste ciclo **mais** a reserva acumulada que foi
+    /// paga junto. A divisão entre as duas parcelas sai no `ComissaoDaReservaPaga`.
+    ///
+    /// ⚠️ **Consequência para quem reconcilia:** `Σ ComissaoDeAfiliado.comissao_usdc`
+    /// deixa de ser igual a `LucroDistribuido.comissoes_afiliados` sempre que uma
+    /// reserva é paga — aquele é o DEVIDO do ciclo, este inclui o que veio de
+    /// ciclos anteriores. A igualdade só vale somando os `ComissaoAcumulada` e
+    /// subtraindo os `ComissaoDaReservaPaga.da_reserva_micro`.
     pub comissao_usdc: u64,
     /// Cotas cunhadas ao afiliado (ao `nav_fechamento`, já com o acerto dele compensado).
     pub cotas: u64,
@@ -301,4 +353,139 @@ pub struct ParametroAjustado {
     pub qual: u8,
     pub anterior: u64,
     pub novo: u64,
+}
+
+/// ⚠️ UPGRADE N · A MARCA DO PISO FOI GRAVADA.
+///
+/// Sai so' quando lucro realizado ENTRA na gaveta (`delta > 0`) — nao a cada
+/// publicacao. E' o unico registro de que o preco de entrada subiu, e por quanto:
+/// sem ele, a mesa descobriria o piso novo so' quando alguem reclamasse do preco
+/// do aporte.
+#[event]
+pub struct PisoMarcado {
+    /// O NAV bruto que virou piso. E' o mesmo `vault.nav` desta publicacao.
+    pub nav_piso: u64,
+    /// Quanto de lucro entrou na gaveta nesta leitura. `> 0` sempre, por construcao.
+    pub delta_do_lucro: u64,
+    /// O saldo da gaveta DEPOIS da entrada — o acumulado do ciclo.
+    pub gaveta_saldo: u64,
+    pub timestamp: i64,
+}
+
+/// ⚠️ UPGRADE N · O PISO FOI RESETADO NO FECHAMENTO.
+///
+/// A gaveta esvazia no `deposit_especial`, e com ela o motivo do piso. O evento
+/// registra o valor QUE SAIU e o que entrou, para o laudo poder explicar a queda
+/// do preco de entrada sem que ninguem precise deduzir.
+#[event]
+pub struct PisoResetado {
+    /// O piso que estava marcado, do ciclo que acabou.
+    pub piso_anterior: u64,
+    /// O novo: o NAV pos-fechamento.
+    pub piso_novo: u64,
+    pub timestamp: i64,
+}
+
+/// A Fase A do fechamento em lotes abriu o retrato de um ciclo.
+///
+/// ⚠️ `aberto: false` aqui **não** é anomalia: é o fechamento pelo caminho antigo
+/// (orçamento zero, comissão paga no próprio laço), em que o retrato é só o
+/// registro do ciclo e não há Fase B para rodar.
+#[event]
+pub struct RetratoAberto {
+    pub ciclo: u64,
+    pub indice_ciclo_anterior: u128,
+    pub indice_ciclo: u128,
+    pub nav_fechamento: u64,
+    pub orcamento_micro: u64,
+    pub linhas_votadas: u16,
+    pub aberto: bool,
+    pub timestamp: i64,
+}
+
+/// A Fase B pagou um lote de comissões.
+///
+/// ⚠️ Ele traz `linhas_pagas` e `linhas_votadas` juntos **de propósito**: é por
+/// essa desigualdade que se vê, de fora, que um ciclo ficou com linha sem pagar —
+/// e é o que a decisão 7 do dono manda o `encerrar_ciclo` nomear.
+#[event]
+pub struct LoteDeComissaoPago {
+    pub ciclo: u64,
+    pub linhas_do_lote: u16,
+    pub linhas_pagas: u16,
+    pub linhas_votadas: u16,
+    pub gasto_do_lote: u64,
+    pub gasto_total: u64,
+    pub orcamento_micro: u64,
+    /// Quanto deste lote virou **cota** (o resto foi para as reservas).
+    pub cunhado_micro: u64,
+    /// Quanto da sobra a divisão por 3 **pretendia** devolver à mesa, em micro.
+    pub sobra_micro: u64,
+    /// ⚠️ Quanto foi **de fato cunhado** aos sócios, em cotas.
+    ///
+    /// Os dois números divergem de propósito: `shares_from_usdc` trunca a favor do
+    /// cofre, e o acerto de cada sócio entra netado na cunhagem. Com sobra de 3
+    /// micro, `sobra_micro = 3` e `sobra_em_cotas = 0` — e quem reconcilia precisa
+    /// ver os dois, não o pretendido no lugar do real.
+    pub sobra_em_cotas: u64,
+    pub fechou: bool,
+    pub timestamp: i64,
+}
+
+/// O ciclo foi ENCERRADO pela mesa com linha não paga (DECISOES 13/10 16:55 (8)).
+///
+/// ⚠️ **`nao_pagas` é o que esta instrução existe para publicar.** A lista de
+/// afiliados não é congelada na Fase A (decisão 9) — só a contagem é —, então este
+/// evento é o único lugar onde fica registrado QUEM não recebeu. O contrato prova
+/// que cada uma dessas carteiras não tem marca de pago no ciclo e que as contas
+/// fecham (`nao_pagas + linhas_pagas == linhas_votadas`); ver o cabeçalho de
+/// `instructions/encerrar_ciclo.rs` para o que ele NÃO prova.
+#[event]
+pub struct CicloEncerrado {
+    pub ciclo: u64,
+    pub linhas_votadas: u16,
+    pub linhas_pagas: u16,
+    /// As carteiras das linhas que ficaram SEM pagamento.
+    pub nao_pagas: Vec<Pubkey>,
+    /// O que foi rateado entre os três sócios, em micro-USDC.
+    pub sobra_micro: u64,
+    /// O que de FATO virou cota (truncado, a favor do cofre) — não é `sobra_micro`.
+    pub sobra_em_cotas: u64,
+    pub gasto_micro: u64,
+    pub orcamento_micro: u64,
+    /// O contador de reservas em aberto, que o encerramento NÃO move.
+    pub reservas_em_aberto_micro: u64,
+    /// Quantas marcas de pago foram FECHADAS neste encerramento. ⚠️ Pode ser
+    /// menor que `linhas_pagas`: fechar marca é opcional (ver o cabeçalho de
+    /// `encerrar_ciclo.rs` — exigir todas passava das 64 travas com 42+ linhas).
+    pub marcas_fechadas: u16,
+    pub rent_devolvido: u64,
+    /// Para quem foi o rent das marcas fechadas: o destino nomeado pela mesa,
+    /// registrado aqui (18/10 20:45 P3; a marca não guarda pagador).
+    pub rent_para: Pubkey,
+    pub timestamp: i64,
+    /// A parte de CADA sócio, em micro-USDC: `⌊sobra ÷ 3⌋`, a mesma para os três
+    /// (regra 7 do devnet, DECISOES 18/10 23:50). ⚠️ É o RATEADO, antes do acerto:
+    /// o que cada sócio recebe em cota sai do `cunhar_com_acerto` e pode diferir.
+    /// O resto da divisão fica no tesouro (DECISOES 18/10 20:45 P1). No FIM do
+    /// evento: quem decodifica por posição não vê os campos anteriores andarem.
+    pub por_socio_micro: u64,
+}
+
+/// A reserva de comissão de um afiliado foi LIQUIDADA em cota (item 7.6).
+#[event]
+pub struct ReservaLiquidada {
+    pub afiliado: Pubkey,
+    /// O que estava acumulado, em micro-USDC.
+    pub acumulado_micro: u64,
+    /// O NAV **vigente** com que foi convertido (13/10 16:55 (9)).
+    pub nav: u64,
+    /// As cotas que de fato foram cunhadas — truncadas, a favor do cofre.
+    pub cotas: u64,
+    /// O contador do retrato mais recente, DEPOIS do decremento.
+    pub reservas_em_aberto_micro: u64,
+    pub ciclo_do_retrato: u64,
+    pub rent_devolvido: u64,
+    pub rent_para: Pubkey,
+    pub timestamp: i64,
 }

@@ -1,7 +1,10 @@
 use {
     crate::{
-        constants::*, error::DomError, events::NavPublished, math::nav_dentro_do_bound,
-        state::Vault,
+        constants::*,
+        error::DomError,
+        events::{NavPublished, PisoMarcado},
+        math::nav_dentro_do_bound,
+        state::{RetratoDoCiclo, Vault},
     },
     anchor_lang::prelude::*,
     anchor_spl::token_interface::{Mint, TokenAccount},
@@ -49,7 +52,58 @@ pub struct PublishNav<'info> {
     /// Upgrade J: o supply, para o indice e o piso.
     #[account(address = vault.dom_mint @ DomError::UnknownMint)]
     pub dom_mint: Box<InterfaceAccount<'info, Mint>>,
+    /// (3a) O retrato do ciclo corrente; ABERTO, o piso não é marcado.
+    ///
+    /// CHECK: conferido em `piso_livre` — ou é um `RetratoDoCiclo` do programa
+    /// na sua PDA e `e_o_corrente`, ou é a PDA VAZIA do primeiro ciclo.
+    pub retrato: UncheckedAccount<'info>,
 }
+
+/// (3a) O piso pode ser marcado? `false` com o retrato corrente aberto: o piso
+/// do ciclo foi fixado na Fase A e não se move até ele fechar (DECISOES 14/10
+/// 23:00 item 3; mecanismo 18/10 17:35).
+///
+/// A conta vazia só vale na PDA de `PRIMEIRO_CICLO_DO_RETRATO`: os retratos
+/// formam corrente a partir dela, então ela vazia prova que não há nenhum.
+fn piso_livre(retrato: &AccountInfo, vault: &Vault) -> Result<bool> {
+    if retrato.owner == &anchor_lang::system_program::ID && retrato.data_is_empty() {
+        let (primeiro, _) = Pubkey::find_program_address(
+            &[RETRATO_SEED, &PRIMEIRO_CICLO_DO_RETRATO.to_le_bytes()],
+            &crate::ID,
+        );
+        require_keys_eq!(retrato.key(), primeiro, DomError::RetratoNaoEOMaisRecente);
+        return Ok(true);
+    }
+    require_keys_eq!(*retrato.owner, crate::ID, DomError::RetratoDoCicloInvalido);
+    // ⚠️ Lido por OFFSET, não por `try_deserialize`: um retrato de outro layout
+    // recusaria TODA publicação, e sem NAV fresco nem a Fase A roda para sair.
+    // Os campos do começo não se movem (campo novo só no fim, `96500d3`).
+    let d = retrato.try_borrow_data()?;
+    require!(
+        d.len() >= RETRATO_LIDO && d[..8] == *RetratoDoCiclo::DISCRIMINATOR,
+        DomError::RetratoDoCicloInvalido
+    );
+    let u64_em = |i: usize| u64::from_le_bytes(d[i..i + 8].try_into().unwrap());
+    let u128_em = |i: usize| u128::from_le_bytes(d[i..i + 16].try_into().unwrap());
+    let pda = Pubkey::create_program_address(
+        &[RETRATO_SEED, &u64_em(8).to_le_bytes(), &[d[93]]],
+        &crate::ID,
+    )
+    .map_err(|_| error!(DomError::RetratoDoCicloInvalido))?;
+    require_keys_eq!(retrato.key(), pda, DomError::RetratoDoCicloInvalido);
+    require!(
+        u128_em(16) == vault.indice_ciclo_anterior
+            && u128_em(32) == vault.indice_ciclo
+            && u128_em(48) == vault.indice_diluicao
+            && u64_em(64) == vault.nav_fechamento,
+        DomError::RetratoNaoEOMaisRecente
+    );
+    Ok(d[92] == 0)
+}
+
+/// O mínimo para `piso_livre` ler 0..94: discriminador, `ciclo`, os três índices,
+/// `nav_fechamento` (64..72), `aberto` (92) e `bump` (93) — 72..92 só no tamanho.
+const RETRATO_LIDO: usize = 94;
 
 pub fn handle_publish_nav(
     ctx: Context<PublishNav>,
@@ -60,11 +114,11 @@ pub fn handle_publish_nav(
     require!(nav > 0, DomError::InvalidNav);
 
     let quem = ctx.accounts.publisher.key();
-    let vault = &mut ctx.accounts.vault;
-
-    let pelo_oraculo = quem == vault.nav_oracle;
-    let pela_mesa = quem == vault.authority;
+    let pelo_oraculo = quem == ctx.accounts.vault.nav_oracle;
+    let pela_mesa = quem == ctx.accounts.vault.authority;
     require!(pelo_oraculo || pela_mesa, DomError::NotOracle); // T35
+    let piso_livre = piso_livre(&ctx.accounts.retrato.to_account_info(), &ctx.accounts.vault)?;
+    let vault = &mut ctx.accounts.vault;
 
     // Monotônico: NAV regressivo reabriria a janela do "pior valor" para trás e
     // permitiria escolher o instante mais conveniente (T36).
@@ -146,32 +200,76 @@ pub fn handle_publish_nav(
     // -----------------------------------------------------------------------
     let supply = ctx.accounts.dom_mint.supply;
     let gaveta_saldo = ctx.accounts.gaveta.amount;
-    let caixa = ctx.accounts.treasury.amount;
     let gaveta_key = ctx.accounts.gaveta.key();
-    crate::indice::absorver_no_cofre(vault, &gaveta_key, gaveta_saldo, supply)?;
-    if supply > 0 {
-        let base = (vault.deployed_usdc as u128)
-            .checked_add(caixa as u128)
-            .ok_or(DomError::MathOverflow)?
-            .checked_add(gaveta_saldo as u128)
-            .ok_or(DomError::MathOverflow)?;
-        let piso = u64::try_from(
-            base.checked_mul(NAV_SCALE as u128)
-                .ok_or(DomError::MathOverflow)?
-                / supply as u128,
-        )
-        .map_err(|_| error!(DomError::MathOverflow))?;
-        // `nav_piso` e' INFORMATIVO: o NAV liquido (capital + caixa + P) por cota,
-        // recalculado a cada publicacao para o laudo mostrar ao lado do bruto.
-        // Nao ha recusa por "bruto < piso": o contrato nao conhece a marcacao
-        // das posicoes, e um piso de capital travaria o oraculo em qualquer
-        // drawdown — a D-F2-43 §3 diz que nao existe piso para o capital. O que
-        // protege o P e' estrutural: ele nunca sai da gaveta antes do fechamento
-        // (J2) e a gaveta nao pode encolher (`GavetaDiminuiu`).
-        vault.nav_piso = piso;
+    let delta_do_lucro =
+        crate::indice::absorver_no_cofre(vault, &gaveta_key, gaveta_saldo, supply)?;
+
+    // -----------------------------------------------------------------------
+    // ⚠️ UPGRADE N · O PISO E UMA MARCA, NAO UMA FORMULA SOBRE SALDO
+    //
+    // A regra do dono: toda vez que LUCRO REALIZADO entra na gaveta, o piso
+    // passa a ser o NAV BRUTO daquele instante. Exemplo dele: 200k em 200k
+    // cotas e' NAV 1,00; realiza 10k -> patrimonio 210k -> NAV 1,05 -> PISO
+    // 1,05. Quem entrar depois paga 1,05, porque o lucro ja' esta' no preco.
+    //
+    // ─── por que a formula antiga tinha de sair ──────────────────────────
+    //
+    // Ela era `(deployed_usdc + caixa + gaveta_saldo) / supply` — VALOR DE
+    // LIVRO. Nasceu no Upgrade J para o laudo mostrar o "NAV liquido" ao lado
+    // do bruto, e o comentario dela dizia, em letra grande, que NAO havia
+    // recusa por piso. No Upgrade K (D-F2-45) o `deposit.rs` passou a cobrar
+    // `max(nav, nav_piso)` e o valor de livro virou PRECO DE ENTRADA sem que
+    // ninguem notasse — porque, com o fundo no lucro, os dois numeros ficavam
+    // acima do NAV e a diferenca nao aparecia.
+    //
+    // ⚠️ Com perda nao realizada ela apareceu inteira. MEDIDO em 08/10:
+    //
+    //     nav ................... 0,989765
+    //     piso (formula velha) .. 1,065958     7,70% ACIMA
+    //     deployed_usdc ......... 99,3% da base
+    //
+    // O fundo ficou FECHADO para dinheiro novo: nenhum entrante paga 7,7% de
+    // premio. E `deployed_usdc` e' o CUSTO do capital em campo — ele nao cai
+    // quando o ativo cai, so' por `return_capital`, `resgate_capital` ou pela
+    // caneta do `ajustar_deployed_usdc`.
+    //
+    // ─── e por que a marca NAO dobra a gaveta ────────────────────────────
+    //
+    // ⚠️ O NAV publicado JA CONTEM a gaveta: ela e' a perna `mesa` do laudo
+    // (`backend-nav/config/pernas.producao.json`, perna[1], rotulo "Lucro do
+    // Ciclo"), e o patrimonio e' a soma de TODAS as pernas
+    // (`backend-nav/lib/apurador.ts:120-121,153`).
+    //
+    // Entao `nav_piso = nav + gaveta/supply` DOBRARIA o lucro. Medido em
+    // 07/10 01:35, com 4.246,497908 na gaveta: o nav publicado era 1,033575 e
+    // `nav + gaveta/supply` daria 1,059333 — 4.246,50 USD contados duas vezes.
+    //
+    // A marca nao soma nada. Ela GRAVA o NAV, que ja' e' o numero certo.
+    //
+    // ─── a ordem das linhas e' a regra, nao estilo ───────────────────────
+    //
+    // A marca grava o NAV **NOVO** (o que esta' sendo publicado), nao o
+    // anterior — e' o que o exemplo do dono diz: "realiza 10k -> piso 1,05",
+    // e 1,05 e' o NAV DEPOIS do lucro entrar. Por isso o `vault.nav = nav`
+    // vem ANTES, e a marca le' `vault.nav`.
+    //
+    // ⚠️ E ela so' grava quando `delta_do_lucro > 0`. Sem essa condicao, cada
+    // publicacao horaria regravaria a marca com o NAV da hora e o piso
+    // deixaria de ser marca — viraria "o ultimo NAV", que nao protege ninguem.
+    // -----------------------------------------------------------------------
+    vault.nav = nav;
+
+    // (3a) Com o retrato aberto o NAV publica e o índice absorve; só a marca espera.
+    if delta_do_lucro > 0 && piso_livre {
+        vault.nav_piso = nav;
+        emit!(PisoMarcado {
+            nav_piso: nav,
+            delta_do_lucro,
+            gaveta_saldo,
+            timestamp,
+        });
     }
 
-    vault.nav = nav;
     vault.nav_ts = timestamp;
     // DV12: a atestação fica no estado, não só no evento — evento expira da
     // janela de retenção do RPC e leva junto a prova de qual laudo sustentava

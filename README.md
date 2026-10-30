@@ -9,8 +9,8 @@ Existe para uma coisa so': **qualquer pessoa refazer o binario e conferir o
 > ⚠️ **Este espelho NAO e' o binario instalado.** Ele reproduz uma
 > versao construida e ainda nao publicada.
 >
-> instalado em mainnet ... `c24c17a039661c98792d7d7d5370dcbde854964f7d6e938723be2c3da79ae89f`
-> este espelho .......... `b18ffbbdb5ad8be4dc74c3d3a96e327dda8274de352d88adfbffc705cace18b4`
+> instalado em mainnet ... `b18ffbbdb5ad8be4dc74c3d3a96e327dda8274de352d88adfbffc705cace18b4`
+> este espelho .......... `d7b30a57b200c0ad50628f3300ce9643a8cfc1ca1efd65647fdd26e98eec8365`
 >
 > Conferir contra a rede hoje vai dar diferenca, e a diferenca e' esta.
 
@@ -19,11 +19,11 @@ Existe para uma coisa so': **qualquer pessoa refazer o binario e conferir o
 | | |
 |---|---|
 | programa | `2KRqqGA47Pg2ML7Q8WJyaVAmEL8DaRx1sKxqzpVyNnkg` |
-| `sha256` do `.so` | `b18ffbbdb5ad8be4dc74c3d3a96e327dda8274de352d88adfbffc705cace18b4` |
-| tamanho | 837920 bytes |
+| `sha256` do `.so` | `d7b30a57b200c0ad50628f3300ce9643a8cfc1ca1efd65647fdd26e98eec8365` |
+| tamanho | 1005544 bytes |
 | instrucoes no IDL | 31 |
 | erros no IDL | 89 |
-| gerado em | 2026-09-25T13:29:27Z |
+| gerado em | 2026-10-30T20:10:13Z |
 
 ## Sobre o `idl/dom_vault.json` — leia antes de vendorizar
 
@@ -62,7 +62,7 @@ sha256sum target/deploy/dom_vault.so    # tem de dar o sha da tabela acima
 
 ```bash
 solana program dump 2KRqqGA47Pg2ML7Q8WJyaVAmEL8DaRx1sKxqzpVyNnkg rede.so --url mainnet-beta
-head -c 837920 rede.so | sha256sum       # 837920 = o tamanho da tabela acima
+head -c 1005544 rede.so | sha256sum       # 1005544 = o tamanho da tabela acima
 ```
 
 ⚠️ **`sha256sum rede.so` direto NAO bate, e nao e' sinal de adulteracao.**

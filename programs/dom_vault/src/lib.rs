@@ -89,8 +89,14 @@ pub mod dom_vault {
 
     /// Sócios são configuráveis — e a trava de distinção vale aqui igual ao
     /// `initialize`, senão a do `initialize` é contornável em dois passos (D10).
-    pub fn update_socios(ctx: Context<UpdateSocios>, socios: [Pubkey; NUM_SOCIOS]) -> Result<()> {
-        instructions::update_socios::handle_update_socios(ctx, socios)
+    pub fn update_socios(
+        ctx: Context<UpdateSocios>,
+        // ⚠️ DECISOES 13/10 21:10: o ciclo que o chamador declara ser o ULTIMO. As
+        // duas contas de retrato o provam — ver `conferir_sem_retrato_aberto`.
+        ciclo: u64,
+        socios: [Pubkey; NUM_SOCIOS],
+    ) -> Result<()> {
+        instructions::update_socios::handle_update_socios(ctx, ciclo, socios)
     }
 
     /// O terceiro argumento entrou no Upgrade G (`D-F2-30`): piso de aporte
@@ -167,6 +173,15 @@ pub mod dom_vault {
         instructions::resgate_capital::handle_carimbar_nav(ctx)
     }
 
+    /// ⚠️ ITEM 2 DO UPGRADE N · a válvula do carimbo: a mesa carimba **mesmo com o
+    /// cofre pausado**, por proposta. Ela sobe no mesmo commit que a trava de pausa
+    /// do caminho aberto porque, sozinha, a trava entregaria a um membro votante o
+    /// poder de congelar a catraca — que é TETO — por uma assinatura, favorecendo
+    /// quem sai à custa de quem fica. Ver `instructions/resgate_capital.rs`.
+    pub fn carimbar_nav_pela_mesa(ctx: Context<CarimbarNavPelaMesa>) -> Result<()> {
+        instructions::resgate_capital::handle_carimbar_nav_pela_mesa(ctx)
+    }
+
     /// **Marca um pedido vencido e trava o `deploy_capital`. Permissionless.**
     ///
     /// O prazo é obrigação firme. O contrato não obriga a mesa a desmontar
@@ -236,6 +251,40 @@ pub mod dom_vault {
     ) -> Result<()> {
         instructions::resgate_capital::handle_efetivar_resgate_capital(ctx, pior_nav)
     }
+    /// FASE B do fechamento em lotes: paga até `K_MAX_DO_LOTE` linhas contra o
+    /// retrato do ciclo, com a marca `["pago", ciclo, indicado]` como trava de
+    /// idempotência. Ver o cabeçalho de `instructions/pagar_comissoes.rs`.
+    pub fn pagar_comissoes<'info>(
+        ctx: Context<'info, PagarComissoes<'info>>,
+        ciclo: u64,
+        linhas: Vec<LinhaDoLote>,
+    ) -> Result<()> {
+        instructions::pagar_comissoes::handle_pagar_comissoes(ctx, ciclo, linhas)
+    }
+
+    /// **`encerrar_ciclo`** — a mesa (2 de 3) fecha um retrato que ficou ABERTO
+    /// com linha não paga, nomeando no evento quem não recebeu, mandando o rent das
+    /// marcas pagas ao destino nomeado pela mesa (registrado no evento) e a sobra do orçamento à mesa em cotas.
+    /// Ver o cabeçalho de `instructions/encerrar_ciclo.rs` (regra escrita de
+    /// 13/10 16:55, itens 3, 7 e 8).
+    pub fn encerrar_ciclo<'info>(
+        ctx: Context<'info, EncerrarCiclo<'info>>,
+        ciclo: u64,
+        nao_pagas: Vec<Pubkey>,
+    ) -> Result<()> {
+        instructions::encerrar_ciclo::handle_encerrar_ciclo(ctx, ciclo, nao_pagas)
+    }
+
+    /// **7.6 `liquidar_reserva`** — a reserva de comissão de um afiliado vira cota
+    /// ao `vault.nav` VIGENTE, a reserva fecha com o rent ao destino nomeado pela mesa (registrado no evento), e o contador
+    /// do retrato mais recente decrementa. Ver o cabeçalho de
+    /// `instructions/liquidar_reserva.rs`.
+    pub fn liquidar_reserva<'info>(
+        ctx: Context<'info, LiquidarReserva<'info>>,
+        ciclo_do_retrato: u64,
+    ) -> Result<()> {
+        instructions::liquidar_reserva::handle_liquidar_reserva(ctx, ciclo_do_retrato)
+    }
 
     /// **Deposit especial** — o lucro realizado do ciclo entra no cofre e se
     /// reparte 60/40 na mesma transação. **Privilegiada.**
@@ -247,9 +296,23 @@ pub mod dom_vault {
     pub fn deposit_especial<'info>(
         ctx: Context<'info, DepositEspecial<'info>>,
         lucro_realizado: u64,
-        afiliados: Vec<state::AfiliadoDoFechamento>,
+        // ⚠️ FASE A (13/10 16:55): os tres numeros que a mesa VOTA, e `ciclo` vem
+        // ANTES do `Vec` porque a semente da PDA do retrato o le' pelo
+        // `#[instruction(...)]`, que desserializa um PREFIXO dos argumentos.
+        ciclo: u64,
+        linhas_votadas: u16,
+        orcamento_comissoes_micro: u64,
+        // Upgrade M: so o `bps` por linha — as pubkeys saem das CONTAS.
+        afiliados: Vec<u16>,
     ) -> Result<()> {
-        instructions::deposit_especial::handle_deposit_especial(ctx, lucro_realizado, afiliados)
+        instructions::deposit_especial::handle_deposit_especial(
+            ctx,
+            lucro_realizado,
+            ciclo,
+            linhas_votadas,
+            orcamento_comissoes_micro,
+            afiliados,
+        )
     }
 
     /// Saque do lucro da janela, pelo cotista. **Não é privilegiada** — quem
@@ -335,6 +398,14 @@ pub mod dom_vault {
 
     pub fn unpause(ctx: Context<SetPause>) -> Result<()> {
         instructions::pause::handle_unpause(ctx)
+    }
+
+    /// ⚠️ ITEM 3 DO UPGRADE N · pausa rápida: um membro VOTANTE do multisig pausa
+    /// o cofre sozinho, sem proposta. Despausar continua exigindo proposta — a
+    /// assimetria é o desenho. Quem vota sai da conta do Squads, lida na hora, com
+    /// as quatro conferências de layout. Ver `instructions/pause.rs`.
+    pub fn pausa_rapida(ctx: Context<PausaRapida>) -> Result<()> {
+        instructions::pause::handle_pausa_rapida(ctx)
     }
 
     pub fn enable_cap(ctx: Context<EnableCap>) -> Result<()> {

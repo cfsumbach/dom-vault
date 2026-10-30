@@ -68,11 +68,65 @@ pub fn absorver_gaveta(
 /// o lote novo entra no índice de agora. É o que faz "aporte adicional" e
 /// "transferência recebida" não ganharem P anterior a elas — e o que faz um
 /// aporte com o índice parado não mudar o sacável de quem já estava.
+///
+/// ─── ⚠️ O PISO ENTRA **ANTES** DA MÉDIA, E ISSO É UM CONSERTO DE DINHEIRO ───
+///
+/// 🔴 **Medido pelo cc-fundo-devnet em 13/10** (`PEDIDO-DEVNET-PARA-FUNDO-MEDIA-ANTES-DO-PISO-13-10.md`,
+/// teste `porta_media_antes_do_piso`): a média era feita com a entrada antiga
+/// **crua**, e só o `ganho` aplicava `max(entrada, piso)` **depois**. Quando a
+/// carteira tinha entrada antiga **abaixo do piso** e recebia cotas no ciclo, o
+/// ganho calculado passava do real em
+/// `min(cotas_novas·(indice_agora − piso), cotas_antigas·(piso − entrada_antiga))`.
+///
+/// O que isso custou, medido:
+/// - **+1.220 micro** de comissão paga pela mesa (ganho do indicado 100,024418
+///   contra 100,000000 real);
+/// - ⚠️ **+12.209 micro** na janela do `sacar_lucro.rs:186` — **dez vezes mais**, e
+///   esses saem do bolso dos **outros cotistas**.
+///
+/// ─── por que o conserto é aqui, e não nos três leitores ─────────────────────
+/// O mesmo `max`-depois-da-média aparece em `ganho`, em `acerto_de` e no
+/// `sacar_lucro`. Aparar **na escrita** conserta os três de uma vez, porque todos
+/// leem o mesmo `indice_entrada` gravado. Consertar leitor por leitor deixaria o
+/// quarto leitor — o que ainda não existe — errado por desenho.
+///
+/// ─── ⚠️ E O PISO É **POR CHAMADOR**, não um valor só ────────────────────────
+/// A primeira versão deste conserto passava `indice_ciclo_anterior` nos quatro
+/// chamadores, e a revisão adversária de 13/10 mediu que isso é **no-op** em três
+/// deles. O piso certo é o da janela que vai **ler** a posição:
+///
+/// ```text
+/// deposit_especial (cunhar_com_acerto)  dentro do fechamento, pos-roll
+///                                       -> indice_ciclo_anterior
+/// deposit · deposit_para · hook         meio de ciclo, janela FECHADA
+///                                       -> indice_ciclo
+/// ```
+///
+/// Trocar o do fechamento por `indice_ciclo` **tiraria** dinheiro: ali
+/// `indice_p == indice_ciclo`, a média viraria o próprio `indice_ciclo` e
+/// apagaria a fatia do lote velho na janela que abre.
+///
+/// ─── e a álgebra, com a condição que ela exige ──────────────────────────────
+/// Com `e₀ < piso`, lote antigo `c₀`, lote novo `N` ao índice de agora `i`, e
+/// **referência de leitura igual a `i`**: aparando `e₀` em `piso`, a média fica
+/// `ē = (c₀·piso + N·i)/(c₀+N) ≥ piso`, e `ganho = (c₀+N)·(i − ē) = c₀·(i − piso)`
+/// — exatamente o ganho real por lote.
+///
+/// ⚠️ **A identidade acima vale `i == referência`**, que é o caso do fechamento.
+/// No meio do ciclo `i = indice_p < referência`, e é o piso `indice_ciclo` que
+/// faz o resultado bater com a soma por lote — ver o teste
+/// `porta_meio_de_ciclo_o_ganho_bate_com_a_soma_por_lote`.
+///
+/// ⓘ **Não há migração a fazer:** posição que já tem entrada abaixo do piso
+/// continua correta na leitura, porque o `ganho` apara. O defeito só nascia ao
+/// **misturar** um lote novo com uma entrada crua — e é esse ato que passa a
+/// aparar.
 pub fn entrada_ponderada(
     cotas_antigas: u64,
     entrada_antiga: u128,
     cotas_novas: u64,
     indice_agora: u128,
+    piso_do_ciclo: u128,
 ) -> Result<u128> {
     let total = (cotas_antigas as u128)
         .checked_add(cotas_novas as u128)
@@ -80,8 +134,10 @@ pub fn entrada_ponderada(
     if total == 0 {
         return Ok(indice_agora);
     }
+    // ⚠️ O APARO: a entrada antiga vale, no máximo, a partir do piso do ciclo.
+    let antiga_efetiva = entrada_antiga.max(piso_do_ciclo);
     let soma = (cotas_antigas as u128)
-        .checked_mul(entrada_antiga)
+        .checked_mul(antiga_efetiva)
         .ok_or(DomError::MathOverflow)?
         .checked_add(
             (cotas_novas as u128)
@@ -147,14 +203,166 @@ mod provas {
         assert_eq!(a.indice_p, 0);
     }
 
+    /// ⚠️ O PISO ENTRA ANTES DA MÉDIA — o defeito que o devnet mediu em 13/10.
+    ///
+    /// Cenário do `PEDIDO-DEVNET-PARA-FUNDO-MEDIA-ANTES-DO-PISO-13-10.md`: carteira
+    /// com entrada ANTIGA abaixo do piso recebe cotas dentro do ciclo (comissão de
+    /// afiliado, aporte depois do P absorvido, ou transferência recebida).
+    #[test]
+    fn porta_media_antes_do_piso_o_ganho_nao_infla() {
+        // escala do índice: 1e18. Piso do ciclo = 1e17, referência = 2e17.
+        const E18: u128 = 1_000_000_000_000_000_000;
+        let piso = E18 / 10; // 1e17
+        let referencia = 2 * E18 / 10; // 2e17
+        let e0 = 0u128; // entrada ANTIGA abaixo do piso — o caso do defeito
+        let c0 = 1_000_000_000u64; // 1.000 cotas (micro)
+        let n = 1_000_000_000u64; // recebe outras 1.000 no ciclo, ao indice de agora
+
+        // o ganho REAL, somado por lote: o lote novo entra na referencia e nao ganha
+        let real = ganho(c0, piso, piso, referencia).unwrap();
+
+        // com o aparo (o codigo de agora)
+        let com_aparo = entrada_ponderada(c0, e0, n, referencia, piso).unwrap();
+        let ganho_com_aparo = ganho(c0 + n, com_aparo, piso, referencia).unwrap();
+        assert_eq!(
+            ganho_com_aparo, real,
+            "com o piso ANTES da media, o ganho bate com o real por lote"
+        );
+
+        // SEM o aparo (passando piso 0, que e o comportamento velho): INFLA
+        let sem_aparo = entrada_ponderada(c0, e0, n, referencia, 0).unwrap();
+        let ganho_sem_aparo = ganho(c0 + n, sem_aparo, piso, referencia).unwrap();
+        assert!(
+            ganho_sem_aparo > real,
+            "a contraprova: sem o aparo o ganho PASSA do real ({ganho_sem_aparo} > {real})"
+        );
+        // e o excesso e exatamente o que o devnet descreveu:
+        // min(N·(i − piso), c0·(piso − e0)) / 1e18
+        let excesso_esperado = std::cmp::min(
+            (n as u128) * (referencia - piso),
+            (c0 as u128) * (piso - e0),
+        ) / INDICE_SCALE;
+        assert_eq!(
+            (ganho_sem_aparo - real) as u128,
+            excesso_esperado,
+            "o excesso e min(N·(i−piso), c0·(piso−e0)) — a formula do PEDIDO do devnet"
+        );
+    }
+
+    /// ⚠️⚠️ O CASO DE MEIO DE CICLO — e é ele que pega o argumento errado do
+    /// chamador, que a prova acima é **cega** para.
+    ///
+    /// A revisão adversária de 13/10 mediu que passar `indice_ciclo_anterior` no
+    /// `deposit`, no `deposit_para` e no hook é **no-op**: a posição escrita no
+    /// meio do ciclo é lida pela janela SEGUINTE, cujo piso é o `indice_ciclo` de
+    /// agora. Aqui a escrita e a leitura usam pisos **diferentes**, como na vida:
+    ///
+    /// ```text
+    /// A = indice_ciclo_anterior = 0,05   (a janela que JA fechou)
+    /// B = indice_ciclo          = 0,10   <- o piso certo da escrita de meio de ciclo
+    /// i = indice_p              = 0,13   (o indice de AGORA, quando o lote entra)
+    /// C = referencia do fechamento seguinte = 0,15
+    /// ```
+    ///
+    /// Direito real, somado POR LOTE: `c₀·(C − B) + N·(C − i)`.
+    #[test]
+    fn porta_meio_de_ciclo_o_ganho_bate_com_a_soma_por_lote() {
+        const E18: u128 = 1_000_000_000_000_000_000;
+        let a = 5 * E18 / 100; // 0,05 — a janela que fechou
+        let b = 10 * E18 / 100; // 0,10 — o indice_ciclo de agora
+        let i = 13 * E18 / 100; // 0,13 — o indice_p quando o lote entra
+        let c = 15 * E18 / 100; // 0,15 — a referencia do fechamento seguinte
+
+        // ⚠️ c0 != n de proposito: com c0 == n os dois ramos do `min` do excesso
+        // dao o mesmo numero e o `min` nao e exercido (achado da revisao).
+        let c0 = 10_000_000_000u64; // 10.000 cotas
+        let n = 100_000_000_000u64; // 100.000 cotas — dez vezes o lote velho
+        let e0 = 0u128; // entrada antiga abaixo de A
+
+        // o direito REAL, por lote — a conta que nao passa pela media
+        let real = ganho(c0, b, b, c).unwrap() + ganho(n, i, b, c).unwrap();
+
+        // (1) o piso CERTO para este chamador: indice_ciclo (B)
+        let com_b = entrada_ponderada(c0, e0, n, i, b).unwrap();
+        assert_eq!(
+            ganho(c0 + n, com_b, b, c).unwrap(),
+            real,
+            "com piso `indice_ciclo` o ganho bate com a soma por lote"
+        );
+
+        // (2) o piso que a MINHA primeira versao passava: indice_ciclo_anterior (A)
+        let com_a = entrada_ponderada(c0, e0, n, i, a).unwrap();
+        let ganho_com_a = ganho(c0 + n, com_a, b, c).unwrap();
+        assert!(
+            ganho_com_a > real,
+            "⚠️ com piso `indice_ciclo_anterior` o ganho AINDA infla: {ganho_com_a} > {real}"
+        );
+
+        // (3) e sem aparo nenhum, para medir quanto o aparo errado adiantava
+        let sem = entrada_ponderada(c0, e0, n, i, 0).unwrap();
+        let ganho_sem = ganho(c0 + n, sem, b, c).unwrap();
+        assert!(
+            ganho_sem >= ganho_com_a,
+            "o aparo no piso errado adianta algo ({ganho_sem} -> {ganho_com_a}), mas nao fecha"
+        );
+        assert!(
+            ganho_sem > real && ganho_com_a > real,
+            "os dois inflam, e so o piso certo fecha"
+        );
+    }
+
+    /// E a carteira cuja entrada já está ENTRE `anterior` e `ciclo` — o caso que a
+    /// revisão chamou de pior, porque é praticamente todo cotista antigo: com o
+    /// piso errado o aparo é um **não-ato**.
+    #[test]
+    fn porta_entrada_entre_os_dois_pisos_o_aparo_errado_e_nao_ato() {
+        const E18: u128 = 1_000_000_000_000_000_000;
+        let a = 5 * E18 / 100;
+        let b = 10 * E18 / 100;
+        let i = 13 * E18 / 100;
+        let c = 15 * E18 / 100;
+        let e0 = 6 * E18 / 100; // 0,06 — ACIMA de A e abaixo de B
+        let (c0, n) = (10_000_000_000u64, 10_000_000_000u64);
+
+        let real = ganho(c0, b, b, c).unwrap() + ganho(n, i, b, c).unwrap();
+        let com_a = entrada_ponderada(c0, e0, n, i, a).unwrap();
+        let sem = entrada_ponderada(c0, e0, n, i, 0).unwrap();
+        assert_eq!(
+            com_a, sem,
+            "⚠️ entrada acima de `anterior`: o aparo em `anterior` nao muda NADA"
+        );
+        let com_b = entrada_ponderada(c0, e0, n, i, b).unwrap();
+        assert_eq!(
+            ganho(c0 + n, com_b, b, c).unwrap(),
+            real,
+            "e com `indice_ciclo` fecha exato"
+        );
+    }
+
+    /// ⓘ E com a entrada antiga ACIMA do piso o aparo nao faz nada — ele nunca
+    /// tira de quem tem direito, so impede de contar o que esta abaixo do piso.
+    #[test]
+    fn porta_o_aparo_nao_muda_quem_entrou_depois_do_fechamento() {
+        const E18: u128 = 1_000_000_000_000_000_000;
+        let piso = E18 / 10;
+        let e0 = E18 / 5; // 2e17, ACIMA do piso
+        let i = E18 / 2;
+        let (c0, n) = (500_000_000u64, 250_000_000u64);
+        assert_eq!(
+            entrada_ponderada(c0, e0, n, i, piso).unwrap(),
+            entrada_ponderada(c0, e0, n, i, 0).unwrap(),
+            "entrada antiga acima do piso: o aparo e um nao-ato"
+        );
+    }
+
     #[test]
     fn entrada_ponderada_e_a_media_pelas_cotas() {
         // 100 cotas a 0 + 100 cotas a 10 → 5
-        assert_eq!(entrada_ponderada(100, 0, 100, 10).unwrap(), 5);
+        assert_eq!(entrada_ponderada(100, 0, 100, 10, 0).unwrap(), 5);
         // primeiro lote: a entrada e' o indice de agora
-        assert_eq!(entrada_ponderada(0, 0, 50, 42).unwrap(), 42);
+        assert_eq!(entrada_ponderada(0, 0, 50, 42, 0).unwrap(), 42);
         // lote novo de zero cotas: nada muda
-        assert_eq!(entrada_ponderada(100, 3, 0, 99).unwrap(), 3);
+        assert_eq!(entrada_ponderada(100, 3, 0, 99, 0).unwrap(), 3);
     }
 
     #[test]
@@ -163,7 +371,7 @@ mod provas {
         // ganho antes = c1 (I − e1); ganho depois = (c1+c2)(I − e') = c1 (I − e1)
         let (c1, e1, i, c2) = (55_000 * E6, 0u128, 3 * INDICE_SCALE / 100, 5_000 * E6);
         let antes = ganho(c1, e1, 0, i).unwrap();
-        let e2 = entrada_ponderada(c1, e1, c2, i).unwrap();
+        let e2 = entrada_ponderada(c1, e1, c2, i, 0).unwrap();
         let depois = ganho(c1 + c2, e2, 0, i).unwrap();
         assert!(antes.abs_diff(depois) <= 1, "{antes} vs {depois}");
     }
@@ -356,6 +564,7 @@ pub fn absorver_no_cofre(
 /// Registra um lote de cotas que entrou numa carteira: cria/atualiza
 /// `PosicaoDoCotista` pela média ponderada. `cotas_antes` é o saldo da ATA
 /// ANTES do lote (o handler lê antes do mint/transfer).
+#[allow(clippy::too_many_arguments)]
 pub fn registrar_entrada(
     posicao: &mut crate::state::PosicaoDoCotista,
     owner: &Pubkey,
@@ -363,6 +572,8 @@ pub fn registrar_entrada(
     cotas_antes: u64,
     cotas_novas: u64,
     indice_agora: u128,
+    // O piso do ciclo (vault.indice_ciclo_anterior) — ver o aparo em entrada_ponderada.
+    piso_do_ciclo: u128,
 ) -> Result<()> {
     if posicao.owner == Pubkey::default() {
         posicao.owner = *owner;
@@ -375,6 +586,7 @@ pub fn registrar_entrada(
         posicao.indice_entrada,
         cotas_novas,
         indice_agora,
+        piso_do_ciclo,
     )?;
     Ok(())
 }
@@ -629,7 +841,18 @@ pub fn acertar_com_cpi<'info>(
         }
     } else if a.devido_micro > a.pago_micro {
         require!(owner_assina && owner.is_signer, DomError::AcertoPendente);
-        let debito = crate::math::shares_from_usdc(a.devido_micro - a.pago_micro, nav)?.min(cotas);
+        // ⚠️ PARA CIMA: o débito é o que a carteira DEVE. Truncar aqui fazia um
+        // débito menor que `⌊nav/10⁶⌋` virar ZERO cota — e, como a posição é
+        // marcada como acertada logo abaixo, a dívida era **perdoada para
+        // sempre**, com o teto subindo junto com o NAV. Ver
+        // `math::shares_from_usdc_ceil`.
+        //
+        // ⓘ O `.min(cotas)` FICA, e é outra conversa: carteira cujo débito passa
+        // do saldo inteiro dela não tem como pagar em cota, e queimar mais do que
+        // ela tem é impossível. Esse perdão é anterior a este conserto e está
+        // declarado no relatório — não é arredondamento, é insolvência.
+        let debito =
+            crate::math::shares_from_usdc_ceil(a.devido_micro - a.pago_micro, nav)?.min(cotas);
         if debito > 0 {
             burn(
                 CpiContext::new(

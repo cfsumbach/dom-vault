@@ -320,9 +320,156 @@ pub struct CarimbarNav<'info> {
 /// E quem **paga** é o `efetivar_resgate_capital` — esse exige NAV fresco, e é lá
 /// que a trava tem de estar.
 pub fn handle_carimbar_nav(ctx: Context<CarimbarNav>) -> Result<()> {
+    // ─────────────────────────────────────────────────────────────────────────
+    // ⚠️ ITEM 2 DO UPGRADE N · O CARIMBO ABERTO RESPEITA A PAUSA
+    // ─────────────────────────────────────────────────────────────────────────
+    // Medido antes desta linha (`docs/TRAVA-DO-CARIMBO.md` §3.2): esta instrução
+    // tinha **uma única verificação, e ela não era `paused`**. Então a alavanca
+    // mais rápida da mesa — pausar o cofre — **não parava** um NAV falso de ser
+    // carimbado nos pedidos da fila, e a mesa era obrigada a corrigir o NAV, o que
+    // para −15% exige +17,65%: fora da banda, logo pela válvula, logo outra
+    // proposta, tudo dentro de ~115 minutos (§3.3).
+    //
+    // ⚠️ `require!` DEPOIS do estado terminal, de propósito. Carimbo num pedido JÁ
+    // PAGO devolve `ResgateJaPago`, não `Paused` — senão o operador espera a
+    // despausa e tenta de novo, para sempre, num pedido que nunca mais será
+    // carimbável. (O `publish_nav.rs:95-101` põe `paused` ANTES do intervalo pelo
+    // motivo simétrico: lá o diagnóstico útil é a pausa.)
+    //
+    // ─────────────────────────────────────────────────────────────────────────
+    // ⚠️⚠️ E POR QUE A VÁLVULA SOBE NO MESMO COMMIT — ela não é refinamento
+    // ─────────────────────────────────────────────────────────────────────────
+    // A revisão adversária de 13/10 UTC mediu o que o desenho aceito não viu, e
+    // eu havia escrito o dano **ao contrário**. Os três tetos do pagamento são
+    // limites SUPERIORES (`:546-557`: `pior_nav <= nav_na_solicitacao`,
+    // `<= vault.nav`, `<= pior_nav_visto`). Então:
+    //
+    //   · a catraca **nunca** impede pagar baixo — ela só impede pagar ALTO
+    //   · congelar a catraca no alto **favorece quem SAI**, à custa de quem FICA
+    //   · e `efetivar_resgate_capital` **não tem trava de pausa** (`:442-468`)
+    //
+    // Com o caminho aberto fechado pela pausa e nada mais, a sequência abaixo
+    // apaga o vale de uma queda:
+    //
+    // ```text
+    //   1  o cotista solicita     (antes de pausar: `:65` fecha o solicitar)
+    //   2  o NAV cai
+    //   3  UM membro votante pausa     <- 1 assinatura, com a pausa rapida do item 3
+    //      e ninguem mais consegue carimbar o NAV baixo
+    //   4  a crise passa, a mesa despausa, o oraculo publica o NAV recuperado
+    //   5  efetivar paga ao NAV de ANTES da queda
+    // ```
+    //
+    // Medido no cenário do próprio doc (§1.1, 23/09): 47.170 cotas a 1,060000 com o
+    // NAV caindo a 0,950000 e voltando. Com a catraca correndo, o teto vira 0,95 e
+    // o pagamento é **44.811 USDC**; com ela congelada, **50.000**. ⚠️ **Delta de
+    // 5.189 USDC saindo de quem fica** — e os sócios recebem cotas por
+    // `fee_share`, então um membro votante é também cotista.
+    //
+    // **A válvula é o que devolve a simetria:** com ela, os outros dois travam o
+    // vale por UMA proposta, sem precisar despausar. "1 assinatura vence 2 votos"
+    // vira "1 assinatura custa 1 proposta". É o que a emenda 2 da RODADA 3 já
+    // mandava — *"válvula da mesa: deve ATRAVESSAR"* —, e é por isso que ela não
+    // podia ficar para depois.
+    //
+    // ⚠️ E há um caminho de ZERO código que continua valendo, e a mesa deve
+    // conhecer: `unpause` + `carimbar_nav` + `pause` numa **única transação de
+    // vault do Squads** executa atômico, e o `carimbar_nav` não declara
+    // signatário, então pega carona. A válvula explícita existe porque uma
+    // instrução nomeada é auditável e não depende de ninguém montar as três na
+    // ordem certa.
+    //
+    // ─────────────────────────────────────────────────────────────────────────
+    // ⚠️ O QUE AINDA NÃO ESTÁ AQUI, com o motivo medido
+    // ─────────────────────────────────────────────────────────────────────────
+    //   1 a carência (`nav_firme`, `nav_pendente`, `pendente_desde`,
+    //     `carimbo_carencia_s`) custa **32 bytes no `Vault`**. Medido em 13/10 UTC,
+    //     na conta da mainnet: ela tem **731 bytes**, que é exatamente
+    //     `8 + Vault::INIT_SPACE`. ⚠️ **A FOLGA É ZERO.** Exige **realloc em
+    //     mainnet**, e realloc do `Vault` é apagão até a migração rodar
+    //     (`migracao_j.rs` é o precedente da cerimônia). Decisão do dono.
+    //     ⚠️ A alternativa de pôr os quatro campos em **PDA própria** — o
+    //     precedente do porteiro da whitelist — evita o realloc, ao custo de uma
+    //     conta nova no `publish_nav` E no `carimbar_nav`. Foi considerada e fica
+    //     na mesa do arquiteto junto da cerimônia; não está descartada.
+    //     ⚠️ E o §5 do doc aceito diz que os campos novos entram **depois** de
+    //     `layout_version`. **Isso contraria o `state.rs:249-267`**, que exige
+    //     `layout_version` como ÚLTIMO campo para poder ser lido em
+    //     `data[len-2..len]` sem conhecer o layout. Campo novo entra ANTES dele.
+    //
+    //   2 o evento `NavCarimbado` (emenda 3) carrega `nav_firme`, que é campo da
+    //     metade 1. ⚠️ Evento desta casa se decodifica POR ORDEM: publicar agora
+    //     sem o campo e mudar depois quebraria o backend **duas vezes**. Vai
+    //     inteiro, uma vez, com a metade 1. ⚠️ Fica declarado o custo de esperar:
+    //     uma mutação de dinheiro permissionless e irreversível continua **sem
+    //     rastro**, e agora a **recusa** também não deixa rastro.
+    let pedido = &mut ctx.accounts.pedido;
+    require!(pedido.estado != PEDIDO_PAGO, DomError::ResgateJaPago);
+    require!(!ctx.accounts.vault.paused, DomError::Paused);
+
+    let nav = ctx.accounts.vault.nav;
+    if nav < pedido.pior_nav_visto {
+        pedido.pior_nav_visto = nav;
+    }
+    Ok(())
+}
+
+// ===========================================================================
+// 2b. ⚠️ A VÁLVULA DO CARIMBO — a mesa atravessa a pausa, por proposta
+// ===========================================================================
+
+/// Contas da válvula. ⚠️ **Instrução separada, e não um `Signer` no
+/// `carimbar_nav`.**
+///
+/// O motivo é de compatibilidade e está medido: o `carimbar_nav` é **sem
+/// signatário de propósito**, e o painel monta a transação pela LISTA DE CONTAS da
+/// instrução. Pôr um signatário lá mudaria a lista e quebraria o que o painel já
+/// manda — mudança de duas camadas. Assim, a lista do `carimbar_nav` fica
+/// **byte-idêntica**, e o painel só aprende esta quando a mesa for usá-la.
+///
+/// E é o idioma desta casa: `pause` e `unpause` são duas instruções, não uma com
+/// bandeira; a `pausa_rapida` do item 3 entrou separada em vez de parâmetro no
+/// `pause`.
+#[derive(Accounts)]
+pub struct CarimbarNavPelaMesa<'info> {
+    pub authority: Signer<'info>,
+    #[account(
+        seeds = [VAULT_SEED],
+        bump = vault.bump,
+        has_one = authority @ DomError::Unauthorized,
+    )]
+    pub vault: Box<Account<'info, Vault>>,
+    #[account(
+        mut,
+        seeds = [RESGATE_SEED, &pedido.id.to_le_bytes()],
+        bump = pedido.bump,
+    )]
+    pub pedido: Box<Account<'info, PedidoResgate>>,
+}
+
+/// A válvula: carimba **mesmo com o cofre pausado**, exigindo a autoridade.
+///
+/// ⚠️ **Quem ganha com esta instrução é quem FICA, e isso é o oposto do que eu
+/// havia escrito.** A catraca é teto, não piso: congelá-la no alto deixa pagar o
+/// preço de antes da queda. Sem a válvula, um único membro votante — com a pausa
+/// rápida do item 3 — desliga a catraca por **uma assinatura**, e religar exige os
+/// outros dois. Com a válvula, religar custa **uma proposta**, que é a mesma moeda.
+///
+/// ⚠️ **Ela não dá à mesa nenhum poder novo sobre o dinheiro.** O número carimbado
+/// não é escolhido por ninguém — vem do `vault.nav` do instante — e a catraca **só
+/// desce**. A mesa não precisa dela para pagar barato (os três tetos de
+/// `:546-557` já permitem), e usá-la só **estreita** a liberdade da própria mesa.
+/// É por isso que abrir este caminho à autoridade é seguro: ela só pode se
+/// prejudicar.
+///
+/// A filosofia é a mesma que o `publish_nav` já tem escrita: *"pausar existe para
+/// parar o automático, não para impedir a mesa de corrigir"*. O carimbo
+/// permissionless é o automático; esta é a mesa.
+pub fn handle_carimbar_nav_pela_mesa(ctx: Context<CarimbarNavPelaMesa>) -> Result<()> {
     let nav = ctx.accounts.vault.nav;
     let pedido = &mut ctx.accounts.pedido;
     require!(pedido.estado != PEDIDO_PAGO, DomError::ResgateJaPago);
+    // ⚠️ SEM trava de pausa: atravessar e' a razao de existir desta instrucao.
     if nav < pedido.pior_nav_visto {
         pedido.pior_nav_visto = nav;
     }
@@ -559,6 +706,47 @@ pub fn handle_efetivar_resgate_capital(
     if estava_em_atraso {
         vault.resgates_em_atraso = vault.resgates_em_atraso.saturating_sub(1);
     }
+
+    // ─── O CUSTO DO CAPITAL CAI COM O PAGAMENTO ──────────────────────────────
+    //
+    // Ordem do dono, 03/10, textual: "ajustar_deployed_usdc tem q fazer
+    // automaticamente porra, eu vou ter que ajustar pro piso nao ficar inflado?
+    // nao isso eh idiotice. botao so serve pro sistema fazer oq nao consegue
+    // fazer sozinho".
+    //
+    // Ele esta certo, e o `ajustar_deployed.rs` dizia o contrario sem perceber:
+    // "`deployed_usdc` so anda por `deploy_capital` (+) e `return_capital` (-).
+    // Isso basta para a operacao normal." NAO basta. O resgate paga capital de
+    // campo para FORA do fundo sem passar por nenhuma das duas — e desde a
+    // D-F2-45 esse campo entra no `nav_piso`, que PRECIFICA O APORTE.
+    //
+    // Sem esta linha, o contador segue contando dinheiro que saiu, o piso sobe
+    // sozinho, e o cotista novo paga por capital que nao existe mais. Medido em
+    // 02/10: os tres resgates de teste de 09/09 deixaram 200 USDC de fantasma, e
+    // o pagamento do pedido #3 deixaria 5.877,35.
+    //
+    // ─── por que SATURATING, e por que sem condicao ──────────────────────────
+    //
+    // O contrato NAO SABE de onde veio o dinheiro que esta no `endereco_resgate`
+    // — e essa ignorancia e deliberada ("de onde sai o dinheiro e decisao da
+    // mesa, fora do cofre"). Entao ele nao distingue:
+    //
+    //   pago com capital de campo (o caso decidido em D-F2-47) -> exato;
+    //   pago com dinheiro que nunca foi contado -> o decremento EXAGERA.
+    //
+    // Exagerar reduz o piso abaixo do custo real. E o proprio `ajustar_deployed`
+    // ja julgou essa assimetria, e vale citar porque decide o desenho:
+    //
+    //   "Aumentar `deployed_usdc` levanta o piso, e o piso e o preco minimo de
+    //    entrada: seria uma caneta capaz de ENCARECER A COTA DO COTISTA NOVO.
+    //    Reduzir so pode baratear — e quem e diluido por um piso baixo demais e
+    //    quem ja esta dentro, que e quem vota. O erro que a trava deixa passar e
+    //    o erro que se paga em casa."
+    //
+    // Pela mesma regra, errar PARA BAIXO aqui e o erro de casa, e errar para
+    // cima e o erro cobrado de quem chega. Entao o decremento e incondicional, e
+    // `saturating_sub` porque contador nao fica negativo.
+    vault.deployed_usdc = vault.deployed_usdc.saturating_sub(valor);
 
     emit!(ResgateEfetivado {
         id,

@@ -266,6 +266,30 @@ pub struct Vault {
     /// Borsh, e é de propósito.
     pub layout_version: u16,
 }
+/// Uma linha do lote, como a mesa a vota.
+///
+/// ⚠️ `indicado` vem como **argumento** e não como conta: ele é a semente da marca
+/// de pago, e no caminho do voto não há nada a ler da carteira dele.
+///
+/// ⚠️ O `afiliado` vem **nos dois**: a pubkey que decide dinheiro sai da CONTA
+/// (`afiliado_dom.owner`, o idioma do Upgrade M), e o campo aqui é o que a mesa
+/// VOTOU — o contrato exige que os dois batam. Sem essa amarra, trocar a ordem das
+/// contas reatribuía o dinheiro com os mesmos dados de instrução.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LinhaDoLote {
+    /// A carteira indicada — a semente da marca `["pago", ciclo, indicado]`.
+    pub indicado: Pubkey,
+    /// ⚠️ **Quem recebe.** A conta de cota da linha tem de ser dele, ou recusa com
+    /// `AfiliadoDaLinhaDivergente`.
+    ///
+    /// Ele existe porque, sem ele, trocar a **ordem das contas** reatribuía o
+    /// dinheiro entre afiliados com os mesmos dados de instrução — medido pela
+    /// revisão adversária de 13/10: 200 USDC e 1 USDC trocando de dono. Custo: 32
+    /// bytes por linha (8 linhas = 256 B de 1.232).
+    pub afiliado: Pubkey,
+    /// Quanto a mesa votou para esta linha, em micro-USDC.
+    pub micro: u64,
+}
 
 /// Uma linha da lista de afiliados do fechamento (J1, D-F2-43 §1). Argumento
 /// do `deposit_especial`, votado na proposta: `indicado` é o cotista, `afiliado`
@@ -293,6 +317,156 @@ pub struct PosicaoDoCotista {
     pub indice_diluicao_visto: u128,
     /// J7 — o `indice_ciclo` ate onde a taxa desta carteira ja' foi acertada.
     pub indice_p_acertado: u128,
+    pub bump: u8,
+}
+
+/// O RETRATO DE UM CICLO — o que a Fase B lê, e que não muda. PDA
+/// `[RETRATO_SEED, ciclo.to_le_bytes()]`.
+///
+/// ─── por que ele existe ─────────────────────────────────────────────────────
+/// Medido pelo cc-fundo-devnet em 13/10: sem tabela de endereços cabem **2
+/// linhas** de afiliado numa transação; com ALT, **7** (o teto de 64 travas é da
+/// rede); e a memória do programa estoura na **27ª**. A produção tem ~20 linhas.
+/// O fechamento em lotes foi a direção aprovada (16:55), e este é o congelamento
+/// que o torna possível.
+///
+/// ⚠️ **E ele é o que faz a Fase B não depender de ordem.** O defeito de 13/10
+/// (+24.418 micro de ganho, +1.220 de comissão) existia porque cada linha lia o
+/// estado que as anteriores já tinham mudado. Lendo um retrato que não muda, duas
+/// linhas em lotes diferentes dão o mesmo número que na mesma transação.
+///
+/// ⓘ A **lista não é congelada aqui, só a contagem** (decisão 9 do dono, 16:55):
+/// congelar 20 pares de pubkeys não cabe em transação, e provar pertinência
+/// depois pediria Merkle. O que prende a Fase B é o par `(ciclo, indicado)` da
+/// marca de pago.
+///
+/// ⚠️ **A SOMA DAS RESERVAS ESTÁ AQUI desde a ordem de 21:00** — ver
+/// `reservas_em_aberto_micro`, no fim da struct. Este parágrafo dizia o contrário
+/// (*"o que não está aqui"*) e ficou 36 linhas acima do campo que o desmentia:
+/// doc e escritor discordando no mesmo ato, apontado pela revisão adversária.
+#[account]
+#[derive(InitSpace)]
+pub struct RetratoDoCiclo {
+    /// O ciclo que este retrato descreve — **votado** pela mesa (ver
+    /// `PRIMEIRO_CICLO_DO_RETRATO`).
+    pub ciclo: u64,
+    /// `indice_ciclo_anterior` no instante do fechamento — o piso do ganho.
+    pub indice_ciclo_anterior: u128,
+    /// `indice_ciclo` no instante do fechamento — a referência do ganho.
+    pub indice_ciclo: u128,
+    /// `indice_diluicao` no instante do fechamento — o acerto por carteira.
+    pub indice_diluicao: u128,
+    /// O preço da cota da comissão. **Congelado**: o oráculo publica durante a
+    /// janela, e a ordem de chegada não pode mudar quantas cotas um afiliado
+    /// recebe.
+    pub nav_fechamento: u64,
+    /// O que a mesa separou para comissões, em micro-USDC. **Votado.**
+    pub orcamento_micro: u64,
+    /// O que a Fase B já pagou desse orçamento.
+    pub gasto_micro: u64,
+    /// Quantas linhas a mesa declarou — só a contagem.
+    pub linhas_votadas: u16,
+    /// Quantas a Fase B já fechou.
+    pub linhas_pagas: u16,
+    /// `true` enquanto há custódia esperando a Fase B.
+    ///
+    /// ⚠️ Ele é **`false` em dois casos diferentes**, e os dois são legítimos:
+    ///
+    /// 1. o ciclo fechou pelo caminho antigo (a comissão foi paga no próprio
+    ///    fechamento, e nunca houve custódia) — aí `orcamento == gasto`;
+    /// 2. a Fase B terminou e a sobra voltou à mesa.
+    ///
+    /// O que o campo significa é **"há dívida em aberto?"**, e é `orcamento −
+    /// gasto` que a mede. A primeira versão deste doc dizia só o caso 2 enquanto o
+    /// escritor gravava o caso 1 — doc e escritor discordando no mesmo ato, achado
+    /// da revisão adversária de 13/10.
+    pub aberto: bool,
+    pub bump: u8,
+    /// ⚠️ **A SOMA DAS RESERVAS DE COMISSÃO AINDA NÃO PAGAS**, carregada de um
+    /// ciclo para o outro — **DECISOES 13/10 21:00**.
+    ///
+    /// *"A RESERVA do afiliado também sai do piso e do NAV, não só a custódia (o
+    /// +212 micro tem de virar 0)."*
+    ///
+    /// ─── por que ela mora AQUI ─────────────────────────────────────────────
+    /// As reservas são PDAs por afiliado e **não se somam on-chain**; o cofre não
+    /// tem byte livre para um contador (731 B = `8 + INIT_SPACE`, folga zero). Como
+    /// a Fase A já lê o retrato anterior — para exigir que ele esteja fechado —,
+    /// ela **herda** o total dele e aplica o delta do ciclo.
+    ///
+    /// ⚠️ **E ELA ENTRA DEPOIS DO `bump`, NÃO ANTES.** A primeira versão a pôs no
+    /// meio da struct, e a casa já fixou a regra em `96500d3`: campo no meio desloca
+    /// tudo que vem atrás, e quem decodifica por posição passa a ler o byte baixo
+    /// deste `u64` como `bump`. É a mesma regra dos erros no fim do enum.
+    ///
+    /// 🔴 **E O QUE ELA CUSTA, DECLARADO:** a conta cresceu de 94 para 102 bytes.
+    /// Um retrato gravado pelo binário ANTERIOR não desserializa mais — medido pela
+    /// revisão adversária: `try_deserialize` estoura, e aí **nenhum ciclo fecha e
+    /// nenhum `update_socios` passa**, porque as duas conferências leem o retrato.
+    /// Não há instrução que repare. **A devnet já fechou ciclo com retrato**, então
+    /// ela precisa ser zerada antes do upgrade — ou de uma migração desenhada
+    /// (`migracao_j` é o precedente da casa). Está no `ATUAL.md`, para o dono.
+    ///
+    /// ⚠️ **E A PERGUNTA DO 7.6 ESTAVA ERRADA NO SINAL.** Eu escrevi que, sem
+    /// decrementar, *"a dívida fica superestimada e o piso subestimado"*. Com o
+    /// `.max(nav_fechamento)` que a primeira versão tinha, o piso **nunca descia** —
+    /// era o contrário. Sem o `.max`, a frase passa a valer.
+    pub reservas_em_aberto_micro: u64,
+}
+
+impl RetratoDoCiclo {
+    /// É o retrato do ciclo CORRENTE do cofre? Os quatro campos são escritos
+    /// pela Fase A, e só por ela, na mesma instrução que grava o retrato.
+    ///
+    /// ⚠️ Um só (`indice_ciclo`) não basta: um fechamento cujo P já estava na
+    /// gaveta não anda o índice, e o retrato velho passaria por corrente.
+    pub fn e_o_corrente(&self, v: &Vault) -> bool {
+        self.indice_ciclo == v.indice_ciclo
+            && self.indice_ciclo_anterior == v.indice_ciclo_anterior
+            && self.indice_diluicao == v.indice_diluicao
+            && self.nav_fechamento == v.nav_fechamento
+    }
+}
+
+/// A MARCA DE PAGO de uma linha do fechamento. PDA `[PAGO_SEED, ciclo, indicado]`.
+///
+/// ⚠️ **Ela é a trava de idempotência da Fase B**, e é o que torna desnecessário
+/// congelar a lista de afiliados na Fase A (decisão 9 do dono): a linha que já tem
+/// marca não é paga de novo, venha ela em que lote vier, em que ordem for.
+///
+/// ⓘ Os dois campos são deriváveis da semente, e estão aqui **de propósito**: quem
+/// lê a conta pela cadeia (a vista, o painel, uma auditoria) não tem como inverter
+/// a semente, e uma marca que não diz o que marca é um byte opaco. Custo: 48 bytes
+/// de rent por linha paga, do bolso de quem paga o lote.
+#[account]
+#[derive(InitSpace)]
+pub struct MarcaDePago {
+    pub ciclo: u64,
+    pub indicado: Pubkey,
+    pub bump: u8,
+}
+
+/// A reserva de comissão de um afiliado. PDA `[COMISSAO_SEED, owner]`.
+///
+/// ⚠️ **Por que uma conta própria, e não um campo na `PosicaoDoCotista`:** quem é
+/// afiliado **e** cotista tem os dois direitos, e a posição é a marca do direito
+/// de COTISTA. Guardar a comissão lá misturaria dois direitos numa conta só — e
+/// acrescentar campo à posição exigiria `realloc` das vinte posições que já
+/// existem na mainnet.
+///
+/// ⚠️ **Ela guarda USDC (micro), não cota.** A comissão que não alcançou o mínimo
+/// ainda **não foi precificada**: cunhar exige um `nav_fechamento`, e o
+/// fechamento em que ela for paga terá outro. Guardar cota aqui seria fixar o
+/// preço de uma cunhagem que não aconteceu.
+///
+/// Nasce só quando há o que acumular: comissão que já alcança o mínimo é paga na
+/// hora e não paga rent de conta nenhuma.
+#[account]
+#[derive(InitSpace)]
+pub struct ReservaDeComissao {
+    pub owner: Pubkey,
+    /// Comissão devida e ainda NÃO cunhada, em micro-USDC. Zera quando paga.
+    pub acumulado_micro: u64,
     pub bump: u8,
 }
 

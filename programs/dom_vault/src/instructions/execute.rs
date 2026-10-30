@@ -222,6 +222,12 @@ pub fn handle_execute(ctx: Context<ExecuteHook>, _amount: u64) -> Result<()> {
             posicao.indice_entrada,
             _amount,
             vault.indice_p,
+            // ⚠️ `indice_ciclo`, e não o anterior: este caminho só roda com a
+            // janela FECHADA (`:144` recusa `JanelaDeLucroAberta`, e o único
+            // destino isento é o escrow, cuja posição não passa por aqui). A
+            // posição gravada será lida pela janela seguinte, com piso
+            // `indice_ciclo`. Ver o cabeçalho de `indice::entrada_ponderada`.
+            vault.indice_ciclo,
         )?;
         gravar(&info, &posicao)?;
     }

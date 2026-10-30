@@ -3,7 +3,7 @@ use {
         constants::*,
         error::DomError,
         events::LucroSacadoPorCotista,
-        math::{require_nav_fresco, shares_from_usdc, usdc_from_shares},
+        math::{require_nav_fresco, shares_from_usdc_ceil, usdc_from_shares},
         state::{LucroSacado, PosicaoDoCotista, Vault},
     },
     anchor_lang::prelude::*,
@@ -247,8 +247,18 @@ pub fn handle_sacar_lucro(ctx: Context<SacarLucro>) -> Result<()> {
     let livre = ctx.accounts.treasury.amount.saturating_sub(piso);
     require!(valor <= livre, DomError::NoFreeCash);
 
-    // Cotas a queimar, ao NAV corrente. Truncado a favor do cofre.
-    let cotas_queimadas = shares_from_usdc(valor, nav)?;
+    // -----------------------------------------------------------------------
+    // ⚠️ PARA CIMA, E O COMENTÁRIO AQUI DIZIA O CONTRÁRIO DO QUE O CÓDIGO FAZIA
+    // -----------------------------------------------------------------------
+    // A linha antiga era `shares_from_usdc(valor, nav)` com o comentário
+    // "truncado a favor do cofre". **Truncar a QUEIMA favorece quem saca:** ele
+    // recebe `valor` inteiro e entrega menos cota do que ele vale, e a fração
+    // sai do preço da cota de quem ficou.
+    //
+    // 🔴 Medido pelo devnet em 13/10: 50 USDC ÷ 6,314952 = 7.917.716,56 →
+    // queimava 7.917.716, que valem 49,999996. O cotista levou 3,5 micro, e o
+    // teto é `⌊nav/10⁶⌋` ≈ 6 micro por saque.
+    let cotas_queimadas = shares_from_usdc_ceil(valor, nav)?;
     require!(cotas_queimadas > 0, DomError::SemLucroASacar);
     // Só acontece se o NAV desabar abaixo do delta entre a distribuição e o
     // saque. Recusa em vez de queimar mais do que a carteira tem.

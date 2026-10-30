@@ -252,6 +252,19 @@ pub fn handle_deposit(ctx: Context<Deposit>, usdc_amount: u64) -> Result<()> {
         cotas_antes,
         shares,
         ctx.accounts.vault.indice_p,
+        // ⚠️ O PISO AQUI É `indice_ciclo`, E NÃO `indice_ciclo_anterior`.
+        //
+        // Esta instrução roda **no meio do ciclo**, com a janela FECHADA (a trava
+        // de `JanelaDeLucroAberta` acima). A posição que ela grava vai ser lida
+        // pela janela **seguinte**, cujo piso é o `indice_ciclo` de agora — não o
+        // anterior, que já morreu com a janela que fechou.
+        //
+        // 🔴 Com `indice_ciclo_anterior` o aparo é um NO-OP para toda carteira com
+        // entrada **entre** `anterior` e `ciclo` — que é praticamente todo cotista
+        // antigo — e o ganho inflado reaparece um ciclo adiante. Medido pela
+        // revisão adversária de 13/10: direito real 700 USDC, com piso `anterior`
+        // 1.000 (o mesmo que sem conserto), com piso `indice_ciclo` **700 exato**.
+        ctx.accounts.vault.indice_ciclo,
     )?;
 
     // -----------------------------------------------------------------------

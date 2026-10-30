@@ -109,8 +109,66 @@ pub const NUM_SOCIOS: usize = 3;
 /// Teto da comissao de afiliado, em bps DA PARTE DA MESA sobre o ganho do indicado (J1): 1–5% (D-F2-43 §1; mesa, 21/09).
 #[constant]
 pub const MAX_AFILIADO_BPS: u16 = 500;
-/// Contas por afiliado em `remaining_accounts`: (indicado_dom, indicado_posicao, afiliado_dom, afiliado_posicao).
-pub const CONTAS_POR_AFILIADO: usize = 4;
+/// Quantas contas cada linha de afiliado traz em `remaining_accounts`, nesta ordem:
+/// `indicado_dom`, `indicado_posicao`, `afiliado_dom`, `afiliado_posicao` e
+/// `afiliado_reserva` (a PDA `[COMISSAO_SEED, afiliado]`).
+///
+/// ⚠️ **Eram quatro até o item 7, e a quinta é a reserva de comissão.** Quem monta
+/// a proposta tem de acrescentá-la: com uma conta de menos por linha, a conferência
+/// de tamanho de `deposit_especial` recusa com `AfiliadoInvalido` (6084) — e não
+/// com 6091, que é o erro de uma reserva ERRADA, não de uma reserva ausente.
+pub const CONTAS_POR_AFILIADO: usize = 5;
+
+/// PDA do retrato de um ciclo: `[RETRATO_SEED, ciclo.to_le_bytes()]`.
+///
+/// O **fechamento em lotes** (aprovado em 13/10 16:55) parte em duas instruções: a
+/// Fase A fecha o ciclo e **congela** o que a Fase B vai precisar — os índices, o
+/// `nav_fechamento` e o orçamento das comissões. É esse congelamento que faz a
+/// Fase B ser independente de ordem **por construção**: cada lote lê um retrato
+/// que não muda, em vez do estado do cofre, que os lotes anteriores mudavam.
+pub const RETRATO_SEED: &[u8] = b"retrato";
+
+/// O primeiro ciclo que nasce com retrato.
+///
+/// ⚠️ **Ele existe porque o cofre NÃO tem contador de ciclo** (`state.rs:80`, e
+/// não há byte livre para criar um: a conta na mainnet tem 731 = `8 + INIT_SPACE`).
+/// O número do ciclo é **votado** pela mesa, e o que impede um número errado de
+/// passar é a corrente: o retrato de `ciclo` exige que o de `ciclo − 1` **exista e
+/// esteja fechado**. O primeiro não tem antecessor, e é este.
+///
+/// Em produção o último fechamento foi o **ciclo 3** (07/10 05:17:54 UTC), então o
+/// primeiro com retrato é o **4**.
+pub const PRIMEIRO_CICLO_DO_RETRATO: u64 = 4;
+
+/// PDA da marca de pago de uma linha: `[PAGO_SEED, ciclo, indicado]`.
+///
+/// ⚠️ **Ela é o que permite a lista NÃO ser congelada** (decisão 9 do dono, 16:55).
+/// Congelar 20 pares de pubkeys não cabe em transação, e provar pertinência depois
+/// pediria Merkle. O que prende a Fase B é o par `(ciclo, indicado)`: a linha que
+/// já tem marca não pode ser paga outra vez, em nenhum lote.
+pub const PAGO_SEED: &[u8] = b"pago";
+
+/// PDA da reserva de comissão de um afiliado: `[COMISSAO_SEED, carteira]`.
+///
+/// ⚠️ **Marca PRÓPRIA, e não a `PosicaoDoCotista`** (escopo do item 7, ponto 3):
+/// quem é afiliado **e** cotista tem OS DOIS direitos, e uma marca só apagaria
+/// um deles.
+pub const COMISSAO_SEED: &[u8] = b"comissao";
+
+/// O mínimo, em micro-USDC, para a comissão de um afiliado virar cota.
+///
+/// Abaixo disto a comissão **não cunha**: ela se acumula na reserva do próprio
+/// afiliado (`ReservaDeComissao`) e é paga inteira quando a soma alcança este
+/// valor. Nada do que não cunhou vai para a mesa — a parte da mesa é debitada
+/// pela comissão DEVIDA, cunhada ou não (ordem do dono, 13/10 13:10).
+///
+/// ⚠️ **CONSTANTE, e não campo do cofre — e isto é um DESVIO do escopo, que
+/// pedia `min_saque_comissao_usdc` como parâmetro próprio.** O motivo é medido:
+/// a conta do cofre na mainnet tem **731 bytes = 8 + `Vault::INIT_SPACE`, folga
+/// ZERO**, então qualquer campo novo força `realloc` — que é cerimônia de mesa e
+/// não está autorizada. Virar parâmetro depois é uma linha, no mesmo ato da
+/// migração.
+pub const MIN_COMISSAO_CUNHAGEM_USDC: u64 = 1_000_000;
 
 pub const BPS_DEN: u128 = 10_000;
 
@@ -390,6 +448,25 @@ pub const MAX_PERF_FEE_BPS_TOTAL: u16 = 7_500;
 /// Com o piso, a distribuicao RECUSA ate' a mesa ajustar para 5000.
 pub const MIN_PERF_FEE_BPS_TOTAL: u16 = 5_000;
 
+/// Upgrade L: quanto a gaveta pode ter ACIMA do numero que a mesa votou.
+///
+/// ⚠️ ELE EXISTE PORQUE A IGUALDADE EXATA ERA UMA NEGACAO DE SERVICO. O J exigia
+/// `gaveta.amount == lucro_realizado`, e o proprio teste obrigatorio dizia por que:
+/// *"a proposta votou 999, a gaveta tem 1.000 (alguem mandou entre a proposta e a
+/// execucao)"* — e assertava a RECUSA. Essa intencao era o defeito: qualquer um na
+/// rede derrubava a proposta mandando poeira, por fracoes de centavo, para sempre.
+///
+/// ⚠️ MAS ABRIR SEM FUNDO SERIA PIOR DE OUTRO JEITO. Com `>=` puro, quem propoe
+/// poderia votar 1 micro: o ciclo fecharia, o relogio de 15 dias reiniciaria e a
+/// janela anterior nao sacada seria ZERADA pelo `JanelaDeLucroEncerrada` — tudo
+/// distribuindo quase nada. A chave que propoe nao vota, mas a protecao nao pode
+/// depender so de os socios lerem o numero.
+///
+/// 0,01 USDC: dez vezes a maior poeira medida (0,001 em 05/10) e mil vezes menor
+/// que o 1 USDC do teste obrigatorio, que continua recusado. A poeira nao bloqueia
+/// nada; sub-votar continua impossivel.
+pub const MAX_EXCEDENTE_POEIRA: u64 = 10_000;
+
 /// **Intervalo mínimo entre publicações do ORÁCULO. Uma hora.**
 ///
 /// O limite de 15% por publicação (`NAV_BOUND`) protege contra o dedo gordo de um
@@ -440,3 +517,44 @@ pub const MIN_NAV_PUBLISH_INTERVAL: i64 = 60 * 60;
 /// votável, seria removível pelo mesmo voto que ela protege.
 #[constant]
 pub const MAX_NAV_TIMESTAMP_LAG: i64 = 5 * 60;
+
+/// ⚠️ ITEM 3 DO UPGRADE N · o program id do Squads v4, e o discriminador da conta
+/// `Multisig` dele.
+///
+/// Medido na mainnet em 13/10 UTC (12/10 23h BRT), lendo a conta do multisig `23EM…Lneg` do fundo:
+///
+/// ```text
+/// dono (program id) ..... SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf
+/// bytes ................. 264
+/// discriminador ......... e0 74 79 ba 44 a1 4f ec
+/// threshold (u16 @72) ... 2
+/// membros (Vec @96) ..... 4 · masks 7, 5, 7, 7
+/// ```
+///
+/// ⚠️ **Por que o discriminador é constante do contrato e não leitura:** a pausa
+/// rápida lê a conta de OUTRO programa. Se o Squads mudar o layout dessa conta num
+/// upgrade deles, ler por offset devolve **lixo que parece permissão**. Com o
+/// discriminador conferido, o contrato recusa com `LayoutDoSquadsMudou` em vez de
+/// decidir sobre bytes que não entende. Custo: 8 bytes de leitura.
+pub const SQUADS_PROGRAM_ID: Pubkey = pubkey!("SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf");
+
+/// O discriminador Anchor da conta `Multisig` do Squads v4. Medido, não suposto.
+pub const SQUADS_MULTISIG_DISCRIMINATOR: [u8; 8] = [224, 116, 121, 186, 68, 161, 79, 236];
+
+/// O bit de VOTO na máscara de permissão de um membro do Squads v4.
+///
+/// Medido no multisig do fundo: `Initiate = 1 · Vote = 2 · Execute = 4`. Os três
+/// membros que votam têm máscara 7; o quarto (`G5nd…nwt5`) tem **5** —
+/// `Initiate + Execute`, **sem** voto. É exatamente a linha que a ordem do dono
+/// desenha: *"o quarto membro (só propõe e executa) não pausa"*.
+pub const SQUADS_PERMISSAO_VOTO: u8 = 2;
+
+/// O índice do vault do Squads de que a `authority` deste cofre deriva.
+///
+/// Medido: `["multisig", 23EM…Lneg, "vault", 0]` com bump 255 dá
+/// `dcFs…nXvu`, que é a `vault.authority` gravada na cadeia. ⚠️ **É isso que
+/// dispensa um campo novo no cofre:** o contrato não precisa guardar o endereço do
+/// multisig, porque ele pode CONFERIR que o multisig passado é o que gera a própria
+/// autoridade dele. O cofre não tem byte livre, e esta é a razão de a ordem pedir
+/// leitura do multisig em vez de lista gravada.
+pub const SQUADS_VAULT_INDEX: u8 = 0;
